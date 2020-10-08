@@ -19,7 +19,7 @@ class AlgeDataset(Dataset):
         labels[:0]=strlabels
         self.labels=labels
 
-        dcir_data=None
+        input_data=None
         tag_data=[]
 
         dirqueue = queue.Queue()
@@ -36,6 +36,7 @@ class AlgeDataset(Dataset):
                     cir_data = np.genfromtxt(nextpath, dtype=complex, delimiter=',')
                     """预处理数据"""
                     cir_diff = np.diff(np.abs(cir_data), axis=0)
+                    input_datum=np.asarray([cir_data.real,cir_data.imag])
                     """预处理标签"""
                     tag_pure=""
                     if (content_tag[0]=='='):
@@ -43,15 +44,16 @@ class AlgeDataset(Dataset):
                     else:
                         tag_pure=content_tag[0]
                     """合并数据"""
-                    if (tag_pure=='A' or tag_pure=='B'):
-                        if (dcir_data is None):
-                            dcir_data=cir_diff.reshape((1,1,)+cir_diff.shape)
+                    if (True):#tag_pure=='A' or tag_pure=='B'):
+                        if (input_data is None):
+                            input_data=input_datum.reshape((1,)+input_datum.shape)
                         else:
-                            cir_diff_t=cir_diff.reshape((1,1,)+cir_diff.shape)
-                            dcir_data=np.concatenate((dcir_data,cir_diff_t))
+                            datum_t=input_datum.reshape((1,)+input_datum.shape)
+                            input_data=np.concatenate((input_data,datum_t))
                         tag_data.append(tag_pure)
+        print(input_data.shape)
 
-        self.all_data=torch.from_numpy(dcir_data).float()
+        self.all_data=torch.from_numpy(input_data).float()
 
         le=preprocessing.LabelEncoder()
         le.fit(labels)
