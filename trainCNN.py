@@ -3,12 +3,14 @@ import torch.nn as nn
 import dataset
 from models.CNN import CNN
 from torch.utils.data import random_split,DataLoader
+import torchvision.transforms as transforms
+import matplotlib.pyplot as plt
 
 device = torch.device('cpu')
 
-num_epochs = 5
-num_classes = 2
-batch_size = 10
+num_epochs = 500
+num_classes = 10
+batch_size = 2
 learning_rate = 0.0001
 
 
@@ -18,23 +20,26 @@ In this block
     Get train and val data_loader
 """
 
-def data_loader():
-    all_dataset = dataset.AlgeDataset("../GSM_generation/training_data")
+data_transform=transforms.Compose([transforms.Normalize((0.5, 0.5,0.5), (0.5, 0.5,0.5))])
+all_dataset = dataset.Dataset("../GSM_generation/training_data/word")
+
+
+def data_loader(all_dataset):
     assert all_dataset
-    train_length=int(len(all_dataset)*0.5)
+    train_length=int(len(all_dataset)*0.8)
     train_dataset,val_dataset=random_split(all_dataset,[train_length,len(all_dataset)-train_length])
 
-    train_loader = torch.utils.data.DataLoader(train_dataset,batch_size=batch_size, \
+    train_loader = DataLoader(train_dataset,batch_size=batch_size, \
             shuffle=True)
     # val
-    val_loader = torch.utils.data.DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
 
     return train_loader, val_loader
 
-train_loader, val_loader = data_loader()
+train_loader, val_loader = data_loader(all_dataset)
 # -----------------------------------------------
 
-model = CNN(num_classes).to(device)
+model = CNN(num_classes,channel_input=all_dataset.channel).to(device)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -65,14 +70,19 @@ with torch.no_grad():
     correct = 0
     total = 0
     for images, labels in val_loader:
+        """for image in images:
+            plt.imshow(image.permute(1,2,0))
+            print(labels)
+            plt.show()"""
         images = images.to(device)
         labels = labels.to(device)
         outputs = model(images)
-        _, predicted = torch.max(outputs.data, 1)
+        #print(outputs.data)
+        t, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
         print (predicted,labels)
         correct += (predicted == labels).sum().item()
 
-    print('Test Accuracy of the model on the {} test images: {} %'.format(len(val_loader),100 * correct / total))
+    print('Test Accuracy of the model on the {} test images: {} %'.format(total , 100 * correct / total))
 
-torch.save(model.state_dict(), 'modelcnn.ckpt')
+#torch.save(model.state_dict(), 'modelcnn.ckpt')

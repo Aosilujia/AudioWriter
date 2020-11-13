@@ -6,7 +6,7 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
 
         channel_sizes=[16, 32, 64, 128, 256, 512, 512]
-        kernel_sizes=[3, 3, 3, 3, 3, 3, 2]
+        kernel_sizes=[5, 5, 3, 3, 3, 3, 2]
         strides=[2, 2, 2, 2, 2, 2, 1]
         paddings=[1, 1, 1, 1, 1, 1, 0]
 
@@ -25,17 +25,16 @@ class CNN(nn.Module):
             else:
                 cnn.add_module('relu{0}'.format(i), nn.ReLU(True))
 
-        convRelu(0) #100*60
+        convRelu(0,batchNormalization=True) #100*60
         cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(2, 2))  #50*30
-        convRelu(1) #25*15
+        convRelu(1,batchNormalization=True) #25*15
         cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))  #13*8
-        convRelu(2) #6*4
+        convRelu(2,batchNormalization=True) #6*4
         cnn.add_module('pooling{0}'.format(2), nn.MaxPool2d(2, 2))  #3*2
         self.cnn=cnn
 
         full_connect=nn.Sequential()
-        full_connect.add_module('fc1',nn.Linear(3*2*64,100))
-        full_connect.add_module('fc2',nn.Linear(100,nclass))
+        full_connect.add_module('fc1',nn.Linear(4*2*64,nclass))
         self.full_connect=full_connect
 
     def forward(self, input):
