@@ -8,9 +8,8 @@ import matplotlib.pyplot as plt
 
 device = torch.device('cpu')
 
-num_epochs = 500
-num_classes = 10
-batch_size = 2
+num_epochs = 50
+batch_size = 4
 learning_rate = 0.0001
 
 
@@ -21,7 +20,7 @@ In this block
 """
 
 data_transform=transforms.Compose([transforms.Normalize((0.5, 0.5,0.5), (0.5, 0.5,0.5))])
-all_dataset = dataset.Dataset("../GSM_generation/training_data/word")
+all_dataset = dataset.Dataset("../GSM_generation/training_data/Word")
 
 
 def data_loader(all_dataset):
@@ -38,6 +37,9 @@ def data_loader(all_dataset):
 
 train_loader, val_loader = data_loader(all_dataset)
 # -----------------------------------------------
+
+num_classes = len(all_dataset.label_list)
+
 
 model = CNN(num_classes,channel_input=all_dataset.channel).to(device)
 

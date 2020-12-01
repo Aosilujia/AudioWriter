@@ -26,22 +26,23 @@ def preprocess_cir(filepath):
     ang_sample = np.angle(cir_data)
 
     diff_sample=np.diff(cir_data,axis=0)
+    amp_diff_sample=np.abs(diff_sample)
 
     diff_ang_sample = np.diff(ang_sample,n=1,axis=0)
     diff_amp_sample = np.diff(amp_sample,n=1,axis=0)
     # padding_diff_ang_sample, padding_diff_amp_sample = 0,0
 
     sample = np.stack((real_sample, imag_sample), axis=0)
-    #sample = np.asarray([diff_sample.real])
+    #sample = np.asarray([amp_diff_sample])
     """标签预处理"""
     user_tag=os.path.basename(os.path.split(filepath)[0])
     content_tag=os.path.split(filepath)[1]
     tag_pure=""
-    """去除文件名末尾的_?.csv共六位"""
+    """去除文件名末尾的_?.csv"""
     if (content_tag[0]=='='):
-        tag_pure=content_tag[1:-6]
+        tag_pure=content_tag[1:content_tag.find('_')]
     else:
-        tag_pure=content_tag[0:-6]
+        tag_pure=content_tag[0:content_tag.find('_')]
     return sample,tag_pure
 
 
@@ -120,7 +121,7 @@ def int_split(dataset: Dataset, length: int) -> List[Subset]:
 
 
 if __name__ == '__main__':
-    #dataset=Dataset("../GSM_generation/training_data/alge")
-    dataset=Dataset("../GSM_generation/training_data/word")
+    #dataset=Dataset("../GSM_generation/training_data/Alge")
+    dataset=Dataset("../GSM_generation/training_data/Alge")
     print(dataset.channel)
     print(dataset.label_list)

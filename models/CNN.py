@@ -12,7 +12,7 @@ class CNN(nn.Module):
 
         cnn=nn.Sequential()
 
-        def convRelu(i, batchNormalization=False):
+        def convRelu(i,relu=True, batchNormalization=False,leakyRelu=False):
             nIn = channel_input if i == 0 else channel_sizes[i - 1]
             nOut = channel_sizes[i]
             cnn.add_module('conv{0}'.format(i), \
@@ -22,14 +22,14 @@ class CNN(nn.Module):
             if leakyRelu:
                 cnn.add_module('relu{0}'.format(i),\
                                nn.LeakyReLU(0.2, inplace=True))
-            else:
+            if relu:
                 cnn.add_module('relu{0}'.format(i), nn.ReLU(True))
 
-        convRelu(0,batchNormalization=True) #100*60
+        convRelu(0,batchNormalization=True,relu=False) #100*60
         cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(2, 2))  #50*30
-        convRelu(1,batchNormalization=True) #25*15
+        convRelu(1,batchNormalization=True,relu=False) #25*15
         cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))  #13*8
-        convRelu(2,batchNormalization=True) #6*4
+        convRelu(2,batchNormalization=True,relu=False) #6*4
         cnn.add_module('pooling{0}'.format(2), nn.MaxPool2d(2, 2))  #3*2
         self.cnn=cnn
 
@@ -71,4 +71,3 @@ class ConvNet(nn.Module):
 
 if __name__ == '__main__':
     print(CNN(14))
-    print(ConvNet())
