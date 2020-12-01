@@ -30,7 +30,7 @@ class CRNN(nn.Module):
         paddings=[1, 1, 1, 1, 1, 1, 0]
 
 
-        cnn=nn.Sequential
+        cnn=nn.Sequential()
 
         def convRelu(i, batchNormalization=False):
             nIn = channel_input if i == 0 else channel_sizes[i - 1]
@@ -49,15 +49,15 @@ class CRNN(nn.Module):
         cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(2, 2))
         convRelu(1)
         cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))
-        convRelu(2)
-
+        convRelu(2,True)
         convRelu(3)
-
-        convRelu(4)
-
+        cnn.add_module('pooling{0}'.format(2),
+                       nn.MaxPool2d((2, 2), (1, 1), (1, 1)))  # 256x4x16
+        convRelu(4, True)
         convRelu(5)
-
-        convRelu(6)
+        cnn.add_module('pooling{0}'.format(3),
+                       nn.MaxPool2d((2, 2), (1, 1), (0, 1)))  # 512x2x16
+        convRelu(6, True)  # 512x1x16
 
         self.cnn = cnn
         self.rnn = nn.Sequential(

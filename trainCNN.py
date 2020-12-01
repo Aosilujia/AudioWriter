@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 device = torch.device('cpu')
 
 num_epochs = 50
-batch_size = 4
-learning_rate = 0.0001
+batch_size = 10
+learning_rate = 0.001
 
 
 # -----------------------------------------------
@@ -25,7 +25,7 @@ all_dataset = dataset.Dataset("../GSM_generation/training_data/Word")
 
 def data_loader(all_dataset):
     assert all_dataset
-    train_length=int(len(all_dataset)*0.8)
+    train_length=int(len(all_dataset)*0.85)
     train_dataset,val_dataset=random_split(all_dataset,[train_length,len(all_dataset)-train_length])
 
     train_loader = DataLoader(train_dataset,batch_size=batch_size, \

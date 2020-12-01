@@ -5,14 +5,13 @@ class CNN(nn.Module):
     def __init__(self, nclass, channel_input=1,leakyRelu=False):
         super(CNN, self).__init__()
 
-        channel_sizes=[16, 32, 64, 128, 256, 512, 512]
-        kernel_sizes=[5, 5, 3, 3, 3, 3, 2]
-        strides=[2, 2, 2, 2, 2, 2, 1]
+        channel_sizes=[32, 64, 128, 256, 256, 512, 512]
+        kernel_sizes=[3, 3, 3, 3, 3, 3, 3]
+        strides=[1, 1, 1, 1, 1, 1, 1]
         paddings=[1, 1, 1, 1, 1, 1, 0]
-
         cnn=nn.Sequential()
 
-        def convRelu(i,relu=True, batchNormalization=False,leakyRelu=False):
+        def convRelu(i,batchNormalization=False,relu=True,leakyRelu=False):
             nIn = channel_input if i == 0 else channel_sizes[i - 1]
             nOut = channel_sizes[i]
             cnn.add_module('conv{0}'.format(i), \
@@ -25,16 +24,43 @@ class CNN(nn.Module):
             if relu:
                 cnn.add_module('relu{0}'.format(i), nn.ReLU(True))
 
-        convRelu(0,batchNormalization=True,relu=False) #100*60
-        cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(2, 2))  #50*30
-        convRelu(1,batchNormalization=True,relu=False) #25*15
-        cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))  #13*8
-        convRelu(2,batchNormalization=True,relu=False) #6*4
-        cnn.add_module('pooling{0}'.format(2), nn.MaxPool2d(2, 2))  #3*2
+        def doubleConvRelu(i,batchNormalization=False,relu=True,leakyRelu=False):
+            nIn = channel_input if i == 0 else channel_sizes[i - 1]
+            nOut = channel_sizes[i]
+
+            for n in (i*2,i*2+1):
+                cnn.add_module('conv{0}'.format(n), \
+                               nn.Conv2d(nIn, nOut, kernel_sizes[i], strides[i], paddings[i]))
+                if batchNormalization:
+                    cnn.add_module('batchnorm{0}'.format(n), nn.BatchNorm2d(nOut))
+                if leakyRelu:
+                    cnn.add_module('relu{0}'.format(n),\
+                                   nn.LeakyReLU(0.2, inplace=True))
+                if relu:
+                    cnn.add_module('relu{0}'.format(n), nn.ReLU(True))
+
+                nIn=nOut
+
+
+
+        doubleConvRelu(0,True) #  *60
+        cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(2, 2))  # *30
+        doubleConvRelu(1,True)
+        cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))  # 62*8
+        doubleConvRelu(2,True) #15*2
+        cnn.add_module('pooling{0}'.format(2),
+                        nn.MaxPool2d((2, 2)))  # *3
+        doubleConvRelu(3, True) #*1
+        cnn.add_module('pooling{0}'.format(3),
+                       nn.MaxPool2d((2, 2)))  # 512x2x16
+        doubleConvRelu(4,True)
+        cnn.add_module('pooling{0}'.format(4),
+                       nn.MaxPool2d((2, 2)))  # 512x2x16
+
         self.cnn=cnn
 
         full_connect=nn.Sequential()
-        full_connect.add_module('fc1',nn.Linear(4*2*64,nclass))
+        full_connect.add_module('fc1',nn.Linear(42*256,nclass))
         self.full_connect=full_connect
 
     def forward(self, input):

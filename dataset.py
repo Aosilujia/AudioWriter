@@ -72,7 +72,7 @@ class Dataset(Dataset):
             if tag not in labels:
                 labels.append(tag)
         padded_samples = padding(samples)
-        print(padded_samples.shape)
+        self.data_shape=padded_samples.shape
         self.all_data=torch.from_numpy(padded_samples).float()
         """索引标签到编号"""
         le=preprocessing.LabelEncoder()
@@ -92,19 +92,26 @@ class Dataset(Dataset):
 
     @property
     def label_list(self):
+        #所有种类标签
         return self.labels
 
-    @property
+    """@property
     def tags(self):
-        return self.all_tags
+        #所有标签
+        return self.all_tags"""
 
     @property
     def channel(self):
-        return self.all_data.size()[1]
+        return self.data_shape[1]
+
+    @property
+    def datashape(self):
+        return self.data_shape
+
 
 def int_split(dataset: Dataset, length: int) -> List[Subset]:
     """
-    从每个标签对应的数据中分割固定int个
+    unfinished:从每个标签对应的数据中分割固定int个
     Arguments:
         dataset (Dataset): Dataset to be split
         length (int): length of elements to be split
