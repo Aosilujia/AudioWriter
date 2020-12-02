@@ -6,11 +6,11 @@ from torch.utils.data import random_split,DataLoader
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 
-device = torch.device('cpu')
+device = torch.device('cuda')
 
-num_epochs = 50
+num_epochs = 200
 batch_size = 10
-learning_rate = 0.001
+learning_rate = 0.0001
 
 
 # -----------------------------------------------

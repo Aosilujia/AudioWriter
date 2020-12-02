@@ -53,14 +53,13 @@ class CNN(nn.Module):
         doubleConvRelu(3, True) #*1
         cnn.add_module('pooling{0}'.format(3),
                        nn.MaxPool2d((2, 2)))  # 512x2x16
-        doubleConvRelu(4,True)
+        doubleConvRelu(4, True) #*1
         cnn.add_module('pooling{0}'.format(4),
                        nn.MaxPool2d((2, 2)))  # 512x2x16
-
         self.cnn=cnn
 
         full_connect=nn.Sequential()
-        full_connect.add_module('fc1',nn.Linear(42*256,nclass))
+        full_connect.add_module('fc1',nn.Linear(7*256,nclass))
         self.full_connect=full_connect
 
     def forward(self, input):
