@@ -11,20 +11,21 @@ class CNN(nn.Module):
         paddings=[1, 1, 1, 1, 1, 1, 0]
         cnn=nn.Sequential()
 
-        def convRelu(i,batchNormalization=False,relu=True,leakyRelu=False):
+        def convRelu(i,batchNormalization=False,leakyRelu=False):
             nIn = channel_input if i == 0 else channel_sizes[i - 1]
             nOut = channel_sizes[i]
             cnn.add_module('conv{0}'.format(i), \
                            nn.Conv2d(nIn, nOut, kernel_sizes[i], strides[i], paddings[i]))
             if batchNormalization:
                 cnn.add_module('batchnorm{0}'.format(i), nn.BatchNorm2d(nOut))
+
             if leakyRelu:
                 cnn.add_module('relu{0}'.format(i),\
                                nn.LeakyReLU(0.2, inplace=True))
-            if relu:
+            else:
                 cnn.add_module('relu{0}'.format(i), nn.ReLU(True))
 
-        def doubleConvRelu(i,batchNormalization=False,relu=True,leakyRelu=False):
+        def doubleConvRelu(i,batchNormalization=False,leakyRelu=False):
             nIn = channel_input if i == 0 else channel_sizes[i - 1]
             nOut = channel_sizes[i]
 
@@ -36,31 +37,48 @@ class CNN(nn.Module):
                 if leakyRelu:
                     cnn.add_module('relu{0}'.format(n),\
                                    nn.LeakyReLU(0.2, inplace=True))
-                if relu:
+                else:
                     cnn.add_module('relu{0}'.format(n), nn.ReLU(True))
 
                 nIn=nOut
 
+        def ConvNet3():
+            strides[0]=2
+            strides[1]=2
+            strides[2]=2
+            convRelu(0,True,True) #100*60
+            cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(2, 2))  #50*30
+            convRelu(1,True,True) #25*15
+            cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))  #13*8
+            convRelu(2,True,True) #6*4
+            cnn.add_module('pooling{0}'.format(2), nn.MaxPool2d(2, 2))  #3*2
+            self.cnn=cnn
+            full_connect=nn.Sequential()
+            full_connect.add_module('fc1',nn.Linear(7*2*channel_sizes[2],nclass))
+            self.full_connect=full_connect
 
+        def CaptchaBreakNet():
+            doubleConvRelu(0,True) #  *60
+            cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(2, 2))  # *30
+            doubleConvRelu(1,True)
+            cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))  # 62*8
+            doubleConvRelu(2,True) #15*2
+            cnn.add_module('pooling{0}'.format(2),
+                            nn.MaxPool2d((2, 2)))  # *3
+            doubleConvRelu(3, True) #*1
+            cnn.add_module('pooling{0}'.format(3),
+                           nn.MaxPool2d((2, 2)))  # 512x2x16
+            doubleConvRelu(4, True) #*1
+            cnn.add_module('pooling{0}'.format(4),
+                           nn.MaxPool2d((2, 2)))  # 512x2x16
+            self.cnn=cnn
+            full_connect=nn.Sequential()
+            full_connect.add_module('fc1',nn.Linear(7*256,nclass))
+            self.full_connect=full_connect
 
-        doubleConvRelu(0,True) #  *60
-        cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(2, 2))  # *30
-        doubleConvRelu(1,True)
-        cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))  # 62*8
-        doubleConvRelu(2,True) #15*2
-        cnn.add_module('pooling{0}'.format(2),
-                        nn.MaxPool2d((2, 2)))  # *3
-        doubleConvRelu(3, True) #*1
-        cnn.add_module('pooling{0}'.format(3),
-                       nn.MaxPool2d((2, 2)))  # 512x2x16
-        doubleConvRelu(4, True) #*1
-        cnn.add_module('pooling{0}'.format(4),
-                       nn.MaxPool2d((2, 2)))  # 512x2x16
-        self.cnn=cnn
+        """调用不同的网络方便调试"""
+        ConvNet3()
 
-        full_connect=nn.Sequential()
-        full_connect.add_module('fc1',nn.Linear(7*256,nclass))
-        self.full_connect=full_connect
 
     def forward(self, input):
         # conv features

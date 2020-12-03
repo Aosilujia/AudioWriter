@@ -25,7 +25,7 @@ def preprocess_cir(filepath):
     amp_sample = np.abs(cir_data)
     ang_sample = np.angle(cir_data)
 
-    diff_sample=np.diff(cir_data,axis=0)
+    diff_sample=np.concatenate((np.asarray([np.zeros(121)]),np.diff(cir_data,axis=0)),axis=0)
     amp_diff_sample=np.abs(diff_sample)
 
     diff_ang_sample = np.diff(ang_sample,n=1,axis=0)

@@ -6,9 +6,13 @@ from torch.utils.data import random_split,DataLoader
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 
-device = torch.device('cuda')
 
-num_epochs = 200
+
+device = torch.device('cuda')
+if not torch.cuda.is_available():
+    device = torch.device('cpu')
+
+num_epochs = 50
 batch_size = 10
 learning_rate = 0.0001
 
@@ -28,14 +32,19 @@ def data_loader(all_dataset):
     train_length=int(len(all_dataset)*0.85)
     train_dataset,val_dataset=random_split(all_dataset,[train_length,len(all_dataset)-train_length])
 
+    test_length=int(len(train_dataset)*0.15)
+    test_dataset,no_dataset=random_split(train_dataset,[test_length,len(train_dataset)-test_length])
+
     train_loader = DataLoader(train_dataset,batch_size=batch_size, \
             shuffle=True)
     # val
     val_loader = DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
 
-    return train_loader, val_loader
+    test_loader= DataLoader(test_dataset,batch_size=batch_size, shuffle=True)
 
-train_loader, val_loader = data_loader(all_dataset)
+    return train_loader, val_loader,test_loader
+
+train_loader, val_loader ,test_loader= data_loader(all_dataset)
 # -----------------------------------------------
 
 num_classes = len(all_dataset.label_list)
@@ -71,6 +80,21 @@ model.eval()  # eval mode (batchnorm uses moving mean/variance instead of mini-b
 with torch.no_grad():
     correct = 0
     total = 0
+
+    for images, labels in test_loader:
+        images = images.to(device)
+        labels = labels.to(device)
+        outputs = model(images)
+        #print(outputs.data)
+        t, predicted = torch.max(outputs.data, 1)
+        total += labels.size(0)
+        print (predicted,labels)
+        correct += (predicted == labels).sum().item()
+
+    print('Accuracy on the {}  test images: {} %'.format(total , 100 * correct / total),end=",")
+
+    correct = 0
+    total = 0
     for images, labels in val_loader:
         """for image in images:
             plt.imshow(image.permute(1,2,0))
@@ -85,6 +109,6 @@ with torch.no_grad():
         print (predicted,labels)
         correct += (predicted == labels).sum().item()
 
-    print('Test Accuracy of the model on the {} test images: {} %'.format(total , 100 * correct / total))
+    print('Accuracy on the {} valid images: {} %'.format(total , 100 * correct / total))
 
 #torch.save(model.state_dict(), 'modelcnn.ckpt')
