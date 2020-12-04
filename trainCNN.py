@@ -79,6 +79,7 @@ for epoch in range(num_epochs):
 model.eval()  # eval mode (batchnorm uses moving mean/variance instead of mini-batch mean/variance)
 with torch.no_grad():
     correct = 0
+    correct_twoclass=0
     total = 0
 
     for images, labels in test_loader:
@@ -88,9 +89,7 @@ with torch.no_grad():
         #print(outputs.data)
         t, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
-        print (predicted,labels)
         correct += (predicted == labels).sum().item()
-
     print('Accuracy on the {}  test images: {} %'.format(total , 100 * correct / total),end=",")
 
     correct = 0
@@ -105,10 +104,14 @@ with torch.no_grad():
         outputs = model(images)
         #print(outputs.data)
         t, predicted = torch.max(outputs.data, 1)
+        t, predicted_twoclass = torch.topk(outputs.data, 2 , 1)
         total += labels.size(0)
         print (predicted,labels)
         correct += (predicted == labels).sum().item()
-
+        for predict2,truelabel in zip(predicted_twoclass,labels):
+            if (truelabel in predicted_twoclass):
+                correct_twoclass+=1
     print('Accuracy on the {} valid images: {} %'.format(total , 100 * correct / total))
+    print('Accuracy within two results on the {} valid images: {} %'.format(total , 100 * correct_twoclass / total))
 
 #torch.save(model.state_dict(), 'modelcnn.ckpt')
