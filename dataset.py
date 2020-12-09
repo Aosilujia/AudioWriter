@@ -46,7 +46,7 @@ def preprocess_cir(filepath):
 
 
 class Dataset(Dataset):
-    def __init__(self,directory_name,transform=None,initlabels=[]):
+    def __init__(self,directory_name,transform=None,initlabels=[],max_length=-1):
         if not os.path.isdir(directory_name):
             print(path+" is not a directory")
             return
@@ -70,7 +70,7 @@ class Dataset(Dataset):
             tag_data.append(tag)
             if tag not in labels:
                 labels.append(tag)
-        padded_samples = padding(samples)
+        padded_samples = padding(samples,max_length)
         self.data_shape=padded_samples.shape
         self.all_data=torch.from_numpy(padded_samples).float()
         """索引标签到编号"""

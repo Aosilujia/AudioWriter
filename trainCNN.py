@@ -25,7 +25,7 @@ In this block
 
 data_transform=transforms.Compose([transforms.Normalize((0.5, 0.5,0.5), (0.5, 0.5,0.5))])
 all_dataset = dataset.Dataset("../GSM_generation/training_data/Word")
-dorm_dataset=dataset.Dataset("../GSM_generation/training_data/Word_jxydorm")
+dorm_dataset=dataset.Dataset("../GSM_generation/training_data/Word_jxydorm",max_length=450)
 
 def data_loader(all_dataset):
     assert all_dataset
