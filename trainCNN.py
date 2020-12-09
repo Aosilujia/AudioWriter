@@ -13,7 +13,7 @@ if not torch.cuda.is_available():
     device = torch.device('cpu')
 
 num_epochs = 50
-batch_size = 10
+batch_size = 5
 learning_rate = 0.0001
 
 
@@ -40,11 +40,9 @@ def data_loader(all_dataset):
     # val
     val_loader = DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
 
-    test_loader= DataLoader(test_dataset,batch_size=batch_size, shuffle=True)
+    return train_loader, val_loader
 
-    return train_loader, val_loader,test_loader
-
-train_loader, val_loader ,test_loader= data_loader(all_dataset)
+train_loader, val_loader= data_loader(all_dataset)
 dorm_loader= DataLoader(dorm_dataset,batch_size=batch_size, shuffle=True)
 # -----------------------------------------------
 
