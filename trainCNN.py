@@ -25,7 +25,7 @@ In this block
 
 data_transform=transforms.Compose([transforms.Normalize((0.5, 0.5,0.5), (0.5, 0.5,0.5))])
 all_dataset = dataset.Dataset("../GSM_generation/training_data/Word")
-
+dorm_dataset=dataset.Dataset("../GSM_generation/training_data/Word_jxydorm")
 
 def data_loader(all_dataset):
     assert all_dataset
@@ -45,6 +45,7 @@ def data_loader(all_dataset):
     return train_loader, val_loader,test_loader
 
 train_loader, val_loader ,test_loader= data_loader(all_dataset)
+dorm_loader= DataLoader(dorm_dataset,batch_size=batch_size, shuffle=True)
 # -----------------------------------------------
 
 num_classes = len(all_dataset.label_list)
@@ -82,7 +83,7 @@ with torch.no_grad():
     correct_twoclass=0
     total = 0
 
-    for images, labels in test_loader:
+    for images, labels in dorm_loader:
         images = images.to(device)
         labels = labels.to(device)
         outputs = model(images)
@@ -90,7 +91,7 @@ with torch.no_grad():
         t, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
-    print('Accuracy on the {}  test images: {} %'.format(total , 100 * correct / total),end=",")
+    print('Accuracy on the {}  test images: {} %'.format(total , 100 * correct / total))
 
     correct = 0
     total = 0

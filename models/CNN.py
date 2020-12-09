@@ -77,8 +77,8 @@ class CNN(nn.Module):
             self.full_connect=full_connect
 
         """调用不同的网络方便调试"""
-        ConvNet3()
-
+        #ConvNet3()
+        CaptchaBreakNet()
 
     def forward(self, input):
         # conv features
