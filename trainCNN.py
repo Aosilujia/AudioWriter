@@ -5,7 +5,7 @@ from models.CNN import CNN
 from torch.utils.data import random_split,DataLoader
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
-
+import utility
 
 
 device = torch.device('cuda')
@@ -13,7 +13,7 @@ if not torch.cuda.is_available():
     device = torch.device('cpu')
 
 num_epochs = 50
-batch_size = 5
+batch_size = 10
 learning_rate = 0.0001
 
 
@@ -77,10 +77,10 @@ for epoch in range(num_epochs):
 # Test the model
 model.eval()  # eval mode (batchnorm uses moving mean/variance instead of mini-batch mean/variance)
 with torch.no_grad():
-    correct = 0
-    correct_twoclass=0
-    total = 0
 
+    #跨数据集验证
+    correct = 0
+    total = 0
     for images, labels in dorm_loader:
         images = images.to(device)
         labels = labels.to(device)
@@ -88,10 +88,15 @@ with torch.no_grad():
         #print(outputs.data)
         t, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
+        print (predicted,labels)
         correct += (predicted == labels).sum().item()
     print('Accuracy on the {}  test images: {} %'.format(total , 100 * correct / total))
 
+    #验证集验证
+    conf_matrix = torch.zeros(num_classes,num_classes) #初始化混淆矩阵
+
     correct = 0
+    correct_twoclass=0
     total = 0
     for images, labels in val_loader:
         """for image in images:
@@ -106,11 +111,13 @@ with torch.no_grad():
         t, predicted_twoclass = torch.topk(outputs.data, 2 , 1)
         total += labels.size(0)
         print (predicted,labels)
+        for p, t in zip(predicted, labels):
+            conf_matrix[p, t] += 1 #更新混淆矩阵
         correct += (predicted == labels).sum().item()
         for predict2,truelabel in zip(predicted_twoclass,labels):
             if (truelabel in predicted_twoclass):
                 correct_twoclass+=1
     print('Accuracy on the {} valid images: {} %'.format(total , 100 * correct / total))
     print('Accuracy within two results on the {} valid images: {} %'.format(total , 100 * correct_twoclass / total))
-
+    numpy.save('çonfusion_matrix',conf_matrix.numpy)
 #torch.save(model.state_dict(), 'modelcnn.ckpt')
