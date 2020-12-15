@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import dataset
+import numpy
 from models.CNN import CNN
 from torch.utils.data import random_split,DataLoader
 import torchvision.transforms as transforms
