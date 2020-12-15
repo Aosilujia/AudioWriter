@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import dataset
-import numpy
+import numpy as np
 from models.CNN import CNN
 from torch.utils.data import random_split,DataLoader
 import torchvision.transforms as transforms
@@ -120,5 +120,6 @@ with torch.no_grad():
                 correct_twoclass+=1
     print('Accuracy on the {} valid images: {} %'.format(total , 100 * correct / total))
     print('Accuracy within two results on the {} valid images: {} %'.format(total , 100 * correct_twoclass / total))
-    numpy.save('çonfusion_matrix',conf_matrix.numpy)
+    np.save('confusion_matrix',conf_matrix.numpy())
+    numpy.save('labels',numpy.asarray(all_dataset.label_list))
 #torch.save(model.state_dict(), 'modelcnn.ckpt')
