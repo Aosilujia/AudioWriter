@@ -31,7 +31,7 @@ def preprocess_cir(filepath):
     diff_amp_sample = np.diff(amp_sample,n=1,axis=0)
     # padding_diff_ang_sample, padding_diff_amp_sample = 0,0
 
-    sample = np.stack((real_sample, imag_sample), axis=0)
+    sample = np.stack((real_sample, imag_sample,diff_sample.real), axis=0)
     #sample = np.asarray([amp_diff_sample])
     """标签预处理"""
     user_tag=os.path.basename(os.path.split(filepath)[0])
@@ -56,6 +56,7 @@ class Dataset(Dataset):
         labels=initlabels
         samples=[]
         tag_data=[]
+        sourcefile=[]
         max=0.0
         """遍历文件读数据"""
         filepaths=csvfilelist(directory_name)
@@ -63,6 +64,7 @@ class Dataset(Dataset):
         #it = pool.imap_unordered(preprocess_cir, filepaths)
         #for i in it:
         for path in filepaths:
+            sourcefile.append(path)
             i=preprocess_cir(path)
             sample=i[0]
             tag=i[1]
@@ -73,6 +75,7 @@ class Dataset(Dataset):
         padded_samples = padding(samples,max_length)
         self.data_shape=padded_samples.shape
         self.all_data=torch.from_numpy(padded_samples).float()
+        self.source_files=sourcefile
         """索引标签到编号"""
         le=preprocessing.LabelEncoder()
         le.fit(labels)

@@ -121,5 +121,5 @@ with torch.no_grad():
     print('Accuracy on the {} valid images: {} %'.format(total , 100 * correct / total))
     print('Accuracy within two results on the {} valid images: {} %'.format(total , 100 * correct_twoclass / total))
     np.save('confusion_matrix',conf_matrix.numpy())
-    numpy.save('labels',numpy.asarray(all_dataset.label_list))
+    np.save('labels',numpy.asarray(all_dataset.label_list))
 #torch.save(model.state_dict(), 'modelcnn.ckpt')
