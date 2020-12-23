@@ -228,8 +228,7 @@ def int_split(dataset: Dataset, length: int) -> List[Subset]:
         for value in val_indice:
             tag_indice.remove(value)
         train_indices.append(tag_indice)
-    indices=[list(itertools.chain.from_iterable(train_indices)),list(itertools.chain.from_iterable(val_indices))]
-    return [Subset(dataset, indices)]
+    return [Subset(dataset,list(itertools.chain.from_iterable(train_indices))), Subset(dataset,list(itertools.chain.from_iterable(val_indices)))]
 
 
 
@@ -237,4 +236,4 @@ if __name__ == '__main__':
     #dataset=Dataset("../GSM_generation/training_data/Alge")
     #packCIRData("../GSM_generation/training_data/Word_jxydorm","testcir.npz")
     dataset=Dataset("testcir.npz")
-    int_split(dataset,2)
+    print(int_split(dataset,2))
