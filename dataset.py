@@ -100,10 +100,10 @@ class diskDataset(Dataset):
         #所有种类标签
         return self.labels
 
-    """@property
+    @property
     def tags(self):
         #所有标签
-        return self.all_tags"""
+        return self.all_tags
 
     @property
     def channel(self):
