@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import collections
+import matplotlib.pyplot as plt
 
 def csvfilelist(directory_name):
     """
@@ -13,7 +14,7 @@ def csvfilelist(directory_name):
     :param directory_name
     """
     if not os.path.isdir(directory_name):
-        print(path+" is not a directory")
+        print(directory_name+" is not a directory")
         return []
     filelist=[]
     dirqueue = queue.Queue()
@@ -46,6 +47,53 @@ def padding(raw_samples, max_length=-1, padding_value=0) -> np.ndarray:
         padding_data[idx,:,:lengths[idx]] = seq
     return padding_data
 
+# 绘制混淆矩阵
+def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues):
+    '''
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    Input
+    - cm : 计算出的混淆矩阵的值
+    - classes : 混淆矩阵中每一行每一列对应的列
+    - normalize : True:显示百分比, False:显示个数
+    '''
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print("Normalized confusion matrix")
+    else:
+        print('Confusion matrix, without normalization')
+    print(cm)
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=90)
+    plt.yticks(tick_marks, classes)
+
+    # 。。。。。。。。。。。。新增代码开始处。。。。。。。。。。。。。。。。
+    # x,y轴长度一致(问题1解决办法）
+    plt.axis("equal")
+    # x轴处理一下，如果x轴或者y轴两边有空白的话(问题2解决办法）
+    ax = plt.gca()  # 获得当前axis
+    left, right = plt.xlim()  # 获得x轴最大最小值
+    ax.spines['left'].set_position(('data', left))
+    ax.spines['right'].set_position(('data', right))
+    for edge_i in ['top', 'bottom', 'right', 'left']:
+        ax.spines[edge_i].set_edgecolor("white")
+    # 。。。。。。。。。。。。新增代码结束处。。。。。。。。。。。。。。。。
+
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            num = '{:.2f}'.format(cm[i, j]) if normalize else int(cm[i, j])
+            plt.text(j, i, num,
+                     verticalalignment='center',
+                     horizontalalignment="center",
+                     color="white" if num > thresh else "black")
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    plt.show()
 
 
 

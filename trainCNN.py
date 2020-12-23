@@ -25,14 +25,14 @@ In this block
 """
 
 data_transform=transforms.Compose([transforms.Normalize((0.5, 0.5,0.5), (0.5, 0.5,0.5))])
-all_dataset = dataset.Dataset("../GSM_generation/training_data/Word")
-dorm_dataset=dataset.Dataset("../GSM_generation/training_data/Word_jxydorm",max_length=450,initlabels=all_dataset.label_list)
+all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
+dorm_dataset=dataset.diskDataset("../GSM_generation/training_data/Word_jxydorm",max_length=450,initlabels=all_dataset.label_list)
 
 def data_loader(all_dataset):
     assert all_dataset
     train_length=int(len(all_dataset)*0.85)
-    train_dataset,val_dataset=random_split(all_dataset,[train_length,len(all_dataset)-train_length])
-
+    #train_dataset,val_dataset=random_split(all_dataset,[train_length,len(all_dataset)-train_length])
+    train_dataset,val_dataset=dataset.int_split(all_dataset,5)
     test_length=int(len(train_dataset)*0.15)
     test_dataset,no_dataset=random_split(train_dataset,[test_length,len(train_dataset)-test_length])
 
@@ -121,5 +121,5 @@ with torch.no_grad():
     print('Accuracy on the {} valid images: {} %'.format(total , 100 * correct / total))
     print('Accuracy within two results on the {} valid images: {} %'.format(total , 100 * correct_twoclass / total))
     np.save('confusion_matrix',conf_matrix.numpy())
-    np.save('labels',numpy.asarray(all_dataset.label_list))
+    np.save('labels',np.asarray(all_dataset.label_list))
 #torch.save(model.state_dict(), 'modelcnn.ckpt')
