@@ -1,5 +1,6 @@
 import os
 import queue
+import random
 from operator import itemgetter
 import numpy as np
 import torch
@@ -29,12 +30,13 @@ def csvfilelist(directory_name):
                 filelist.append(nextpath)
     return filelist
 
-def padding(raw_samples, max_length=-1, padding_value=0) -> np.ndarray:
+def padding(raw_samples, max_length=-1, padding_value=0,padding_position=0) -> np.ndarray:
     """
     originated by yyg.对齐所有数据到最大长度或给定长度，输入为[N,C,W,H]
     :param padding_value:
     :param raw_samples: list of sample(numpy array)
     :param max_length: if max_length == -1,then we use max_len of raw_sample,else we use max_length passed in
+    :param padding_position: 0 pad on right, 1 pad on left, 2 pad randomly
     :return:
     """
     shapes = list(map(np.shape, raw_samples))
@@ -44,7 +46,15 @@ def padding(raw_samples, max_length=-1, padding_value=0) -> np.ndarray:
     new_shape = [len(shapes),shapes[0][0],max_length,shapes[0][2]]
     padding_data = np.zeros(new_shape) + padding_value
     for idx, seq in enumerate(raw_samples):
-        padding_data[idx,:,:lengths[idx]] = seq
+        if padding_position==0:
+            padding_data[idx,:,:lengths[idx]] = seq
+        elif padding_position==1:
+            padding_data[idx,:,-lengths[idx]:] = seq
+        elif padding_position==2:
+            padd_pos=0
+            if max_length!=lengths[idx]:
+                padd_pos=random.randint(0,max_length-lengths[idx])
+            padding_data[idx,:,padd_pos:padd_pos+lengths[idx]] = seq
     return padding_data
 
 # 绘制混淆矩阵

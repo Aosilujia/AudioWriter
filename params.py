@@ -4,7 +4,7 @@ import alphabets
 datafilepath_crnn="../GSM_generation/training_data/Word"
 alphabet = alphabets.alphabet
 keep_ratio = False # whether to keep ratio for image resize
-manualSeed = 1234 # reproduce experiemnt
+manualSeed = 1234 # reproduce experiment
 random_sample = True # whether to sample the dataset with random sampler
 nh = 256 # size of the lstm hidden state
 pretrained = '' # path to pretrained model (to continue training)
@@ -12,7 +12,7 @@ expr_dir = 'expr' # where to store samples and models
 dealwith_lossnan = False # whether to replace all nan/inf in gradients to zero
 
 # hardware
-cuda = False # enables cuda
+cuda = True # enables cuda
 multi_gpu = False # whether to use multi gpu
 ngpu = 1 # number of GPUs to use. Do remember to set multi_gpu to True!
 workers = 0 # number of data loading workers

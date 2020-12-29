@@ -69,20 +69,21 @@ def weights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
 
-def net_init(nclass,datashape):
+def net_init(nclass,cirH,channel_input):
     nclass = len(params.alphabet) + 1
-    crnn = net.CRNN(datashape[3], datashape[1], nclass, params.nh)
+    crnn = net.CRNN(cirH, channel_input, nclass, params.nh)
     crnn.apply(weights_init)
     if params.pretrained != '':
         print('loading pretrained model from %s' % params.pretrained)
         if params.multi_gpu:
             crnn = torch.nn.DataParallel(crnn)
         crnn.load_state_dict(torch.load(params.pretrained))
-
     return crnn
 
 datashape=all_dataset.datashape
-crnn = net_init(nclass,datashape)
+cirH=datashape[3]
+channel_input=datashape[1]
+crnn = net_init(nclass,cirH,channel_input)
 print(crnn)
 
 # -----------------------------------------------
@@ -112,7 +113,7 @@ In this block
         image, text, length is used by both val and train
         because train and val will never use it at the same time.
 """
-image = torch.FloatTensor(params.batchSize, 3, params.imgH, params.imgH)
+image = torch.FloatTensor(params.batchSize, channel_input, params.imgH, params.imgH)
 text = torch.LongTensor(params.batchSize * 5)
 length = torch.LongTensor(params.batchSize)
 

@@ -23,10 +23,8 @@ learning_rate = 0.0001
 In this block
     Get train and val data_loader
 """
-
-data_transform=transforms.Compose([transforms.Normalize((0.5, 0.5,0.5), (0.5, 0.5,0.5))])
 all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
-dorm_dataset=dataset.diskDataset("../GSM_generation/training_data/Word_jxydorm",max_length=450,initlabels=all_dataset.label_list)
+dorm_dataset=dataset.diskDataset("../GSM_generation/training_data/Word_jxydorm",max_length=all_dataset.datashape[2],initlabels=all_dataset.label_list)
 
 def data_loader(all_dataset):
     assert all_dataset
@@ -46,10 +44,12 @@ def data_loader(all_dataset):
 train_loader, val_loader= data_loader(all_dataset)
 dorm_loader= DataLoader(dorm_dataset,batch_size=batch_size, shuffle=True)
 # -----------------------------------------------
+"""
+    data augmentation tranformation
+"""
 
 num_classes = len(all_dataset.label_list)
-
-
+#Model initialization
 model = CNN(num_classes,channel_input=all_dataset.channel).to(device)
 
 criterion = nn.CrossEntropyLoss()

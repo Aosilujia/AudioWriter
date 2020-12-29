@@ -113,6 +113,11 @@ class diskDataset(Dataset):
     def datashape(self):
         return self.data_shape
 
+    @property
+    def sourcefiles(self):
+        return self.source_files
+
+
 class Dataset(Dataset):
     """读取保存好的npz文件"""
     def __init__(self,datafile_name,transform=None,initlabels=[],max_length=-1):
@@ -128,6 +133,7 @@ class Dataset(Dataset):
         samples=origin_data['samples']
         tag_data=origin_data['tags']
         tag_full=origin_data['tag_full']
+        tag_ground=origin_data['tag_ground']
         sourcefile=origin_data['sources']
         originlabels=origin_data['labels']
 
@@ -140,6 +146,7 @@ class Dataset(Dataset):
         self.data_shape=padded_samples.shape
         self.all_data=torch.from_numpy(padded_samples).float() #转为torch tensor
         self.source_files=sourcefile
+        self.ground_tag=tag_ground
         """索引标签到编号"""
         le=preprocessing.LabelEncoder()
         le.fit(labels)
@@ -174,10 +181,19 @@ class Dataset(Dataset):
     def datashape(self):
         return self.data_shape
 
+    @property
+    def groundtag(self):
+        return self.ground_tag
+
+    @property
+    def sourcefiles(self):
+        return self.source_files
+
 def packCIRData(directory_name,outputfile="cirdata.npz",initlabels=[],environment=""):
     """ 读所有cir csv文件打包到一个npz里面"""
     samples=[]
     tag_data=[] #标签
+    tag_ground=[]
     tag_full_data=[]
     sourcefile=[]
     labels=initlabels #标签种类
@@ -196,14 +212,22 @@ def packCIRData(directory_name,outputfile="cirdata.npz",initlabels=[],environmen
         samples.append(sample)
         tag_data.append(tag)
         tag_full_data.append(tag_full)
+        tag_ground.append(True)
         if tag not in labels:
             labels.append(tag)
     padded_samples = padding(samples,-1)
-    np.savez(outputfile,samples=padded_samples,tags=tag_data,tag_full=tag_full,labels=labels,sources=sourcefile)
+    #数据增强：随机填充空白(左右移动)
+    random_padded_samples= padding(samples,-1,padding_position=2)
+    all_samples=np.concatenate((padded_samples,random_padded_samples),axis=0)
+    tag_data=tag_data+tag_data
+    tag_full=tag_full+tag_full
+    tag_ground=tag_ground+[False]*len(tag_ground)
+    sourcefile=sourcefile+sourcefile
+    np.savez(outputfile,samples=all_samples,tags=tag_data,tag_full=tag_full,labels=labels,sources=sourcefile,tag_ground=tag_ground)
 
-def int_split(dataset: Dataset, length: int) -> List[Subset]:
+def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
     """
-    unfinished:从每个标签对应的数据中分割固定int个
+    从每个标签对应的数据中分割固定int个,或者按照partial 0.x 分割部分
     Arguments:
         dataset (Dataset): Dataset to be split
         length (int): length of elements to be split
@@ -214,26 +238,51 @@ def int_split(dataset: Dataset, length: int) -> List[Subset]:
 
     labels=dataset.label_list
     tags=dataset.tags
+    tag_ground=[]
+    if hasattr(dataset,"groundtag"):
+        tag_ground=dataset.groundtag
+    else:
+        tag_ground=[True]*len(tags)
+    sources=dataset.sourcefiles
     train_indices=[]
     val_indices=[]
+    """因为有增强的数据，所以要注意是否是groundtruth"""
     tag_indices=[]
+    ground_indices=[]
     for i in range(len(labels)):
         tag_indices.append([])
+        ground_indices.append([])
     for indice,tag in enumerate(tags):
         tag_indices[tag].append(indice)
+        if tag_ground[indice]:
+            ground_indices[tag].append(indice)
     for i in range(len(labels)):
         tag_indice=tag_indices[i]
-        val_indice=random.sample(tag_indice,length)
+        ground_indice=ground_indices[i]
+        """必须从真实data里选验证集"""
+        val_length=length
+        if partial<1:
+            val_length=int(partial*len(ground_indice))
+        val_indice=random.sample(ground_indice,val_length)
         val_indices.append(val_indice)
-        for value in val_indice:
+        for value in val_indice: #抽中的当验证集的数据的下标
             tag_indice.remove(value)
+            for index in tag_indice: #同标签的所有数据的下标
+                if sources[index]==sources[value]: #同一个文件增强出的数据
+                    tag_indice.remove(index)
         train_indices.append(tag_indice)
     return [Subset(dataset,list(itertools.chain.from_iterable(train_indices))), Subset(dataset,list(itertools.chain.from_iterable(val_indices)))]
 
+def data_augmentation(sample):
+    """
+    数据增强，输入一个sample，做处理后输出一个list(sample)
+    """
+    return 0
 
 
 if __name__ == '__main__':
     #dataset=Dataset("../GSM_generation/training_data/Alge")
-    #packCIRData("../GSM_generation/training_data/Word_jxydorm","testcir.npz")
+    packCIRData("../GSM_generation/training_data/Word_jxydorm","testcir.npz")
     dataset=Dataset("testcir.npz")
-    print(int_split(dataset,2))
+    set1,set2=int_split(dataset,2,partial=0.2)
+    print(len(set1))
