@@ -31,7 +31,7 @@ def preprocess_cir(filepath):
     except(ValueError):
         print(filepath)
         print(cir_data)
-        return
+        diff_sample=np.concatenate((np.asarray([np.zeros(121)]),np.diff(cir_data,axis=0)),axis=0)
     amp_diff_sample=np.abs(diff_sample)
 
     diff_ang_sample = np.diff(ang_sample,n=1,axis=0)
