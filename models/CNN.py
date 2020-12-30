@@ -73,7 +73,7 @@ class CNN(nn.Module):
                            nn.MaxPool2d((2, 2)))  # 512x2x16
             self.cnn=cnn
             full_connect=nn.Sequential()
-            full_connect.add_module('fc1',nn.Linear(14*3*256,nclass))
+            full_connect.add_module('fc1',nn.Linear(21*3*256,nclass))
             self.full_connect=full_connect
 
         """调用不同的网络方便调试"""
