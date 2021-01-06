@@ -96,13 +96,13 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
             num = '{:.2f}'.format(cm[i, j]) if normalize else int(cm[i, j])
-            plt.text(j, i, num,
+            plt.text(i, j, num,
                      verticalalignment='center',
                      horizontalalignment="center",
                      color="white" if num > thresh else "black")
     plt.tight_layout()
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
+    plt.ylabel('Predicted label')
+    plt.xlabel('True label')
     plt.show()
 
 def plot_error_matrix(cm, classes, normalize=False, title='Error matrix', cmap=plt.cm.Blues):
@@ -114,18 +114,44 @@ def plot_error_matrix(cm, classes, normalize=False, title='Error matrix', cmap=p
     - classes : 混淆矩阵中每一行每一列对应的列
     - normalize : True:显示百分比, False:显示个数
     '''
+    cmpaintx=np.zeros(cm.shape[0])
+    cmpainty=np.zeros(cm.shape[1])
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            if cm[i,j]!=0 and i!=j:
+                cmpaintx[i]=1
+                cmpainty[j]=1
+    xclasses=[]
+    yclasses=[]
+    for i,ispaint in enumerate(cmpaintx):
+        if ispaint==1:
+            xclasses.append(classes[i])
+    for i,ispaint in enumerate(cmpainty):
+        if ispaint==1:
+            yclasses.append(classes[i])
+
+    cm_new=np.zeros((len(xclasses),len(yclasses)))
+
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            if cm[i,j]!=0 and i!=j:
+                xaxis=xclasses.index(classes[i])
+                yaxis=yclasses.index(classes[j])
+                cm_new[xaxis,yaxis]=cm[i,j]
+
     if normalize:
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        cm_new = cm_new.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         print("Normalized error matrix")
     else:
         print('Error matrix, without normalization')
-    print(cm)
-    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.imshow(cm_new, interpolation='nearest', cmap=cmap)
     plt.title(title)
     plt.colorbar()
-    tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=90)
-    plt.yticks(tick_marks, classes)
+
+    tick_marks = np.arange(len(xclasses))
+    plt.xticks(tick_marks, xclasses, rotation=90)
+    plt.yticks(tick_marks, yclasses)
+
 
     # 。。。。。。。。。。。。新增代码开始处。。。。。。。。。。。。。。。。
     # x,y轴长度一致(问题1解决办法）
@@ -139,22 +165,18 @@ def plot_error_matrix(cm, classes, normalize=False, title='Error matrix', cmap=p
         ax.spines[edge_i].set_edgecolor("white")
     # 。。。。。。。。。。。。新增代码结束处。。。。。。。。。。。。。。。。
 
-    thresh = cm.max() / 2.
-    cmpaint=np.zeros(cm.shape)
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            if cm[i,j]!=0:
+    thresh = cm_new.max() / 2.
 
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            num = '{:.2f}'.format(cm[i, j]) if normalize else int(cm[i, j])
-            plt.text(j, i, num,
+    for i in range(cm_new.shape[0]):
+        for j in range(cm_new.shape[1]):
+            num = '{:.2f}'.format(cm_new[i, j]) if normalize else int(cm_new[i, j])
+            plt.text(i, j, num,
                      verticalalignment='center',
                      horizontalalignment="center",
                      color="white" if num > thresh else "black")
     plt.tight_layout()
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
+    plt.ylabel('Predicted label')
+    plt.xlabel('True label')
     plt.show()
 
 
