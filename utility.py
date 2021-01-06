@@ -105,6 +105,57 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     plt.xlabel('Predicted label')
     plt.show()
 
+def plot_error_matrix(cm, classes, normalize=False, title='Error matrix', cmap=plt.cm.Blues):
+    '''
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    Input
+    - cm : 计算出的混淆矩阵的值
+    - classes : 混淆矩阵中每一行每一列对应的列
+    - normalize : True:显示百分比, False:显示个数
+    '''
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print("Normalized error matrix")
+    else:
+        print('Error matrix, without normalization')
+    print(cm)
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=90)
+    plt.yticks(tick_marks, classes)
+
+    # 。。。。。。。。。。。。新增代码开始处。。。。。。。。。。。。。。。。
+    # x,y轴长度一致(问题1解决办法）
+    plt.axis("equal")
+    # x轴处理一下，如果x轴或者y轴两边有空白的话(问题2解决办法）
+    ax = plt.gca()  # 获得当前axis
+    left, right = plt.xlim()  # 获得x轴最大最小值
+    ax.spines['left'].set_position(('data', left))
+    ax.spines['right'].set_position(('data', right))
+    for edge_i in ['top', 'bottom', 'right', 'left']:
+        ax.spines[edge_i].set_edgecolor("white")
+    # 。。。。。。。。。。。。新增代码结束处。。。。。。。。。。。。。。。。
+
+    thresh = cm.max() / 2.
+    cmpaint=np.zeros(cm.shape)
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            if cm[i,j]!=0:
+
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            num = '{:.2f}'.format(cm[i, j]) if normalize else int(cm[i, j])
+            plt.text(j, i, num,
+                     verticalalignment='center',
+                     horizontalalignment="center",
+                     color="white" if num > thresh else "black")
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    plt.show()
 
 
 class strLabelConverter(object):
@@ -127,10 +178,11 @@ class strLabelConverter(object):
             # NOTE: 0 is reserved for 'blank' required by wrap_ctc
             self.dict[char] = i + 1
 
-    def encode(self, text):
+    def encode(self, text, label_list):
         """Support batch or single str.
         Args:
-            text (str or list of str): texts to convert.
+            text (int or list of int): texts to convert.
+            label_list: label str responding to each int.
         Returns:
             torch.LongTensor [length_0 + length_1 + ... length_{n - 1}]: encoded texts.
             torch.LongTensor [n]: length of each text.
@@ -139,7 +191,7 @@ class strLabelConverter(object):
         length = []
         result = []
         for item in text:
-            item = item.decode('utf-8','strict')
+            item = label_list[item.item()]
             length.append(len(item))
             r = []
             for char in item:

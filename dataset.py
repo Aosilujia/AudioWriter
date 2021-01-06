@@ -89,6 +89,8 @@ class diskDataset(Dataset):
         le.fit(labels)
         self.labels=labels
         self.all_tags=torch.tensor(le.transform(tag_data))
+        print("{} dataset datashape is:".format(directory_name))
+        print(self.data_shape)
 
     def __len__(self):
         return len(self.all_data)
@@ -157,6 +159,8 @@ class Dataset(Dataset):
         le.fit(labels)
         self.labels=labels
         self.all_tags=torch.tensor(le.transform(tag_data))
+        print("{} dataset datashape is:".format(datafile_name))
+        print(self.data_shape)
 
     def __len__(self):
         return len(self.all_data)

@@ -12,12 +12,12 @@ import os
 import utility as utils
 import dataset
 
-import models.crnn as net
+import models.CRNN as net
 import params
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-train', '--trainroot', required=True, help='path to train dataset')
-parser.add_argument('-val', '--valroot', required=True, help='path to val dataset')
+parser.add_argument('-train', '--trainroot', required=False, help='path to train dataset')
+parser.add_argument('-val', '--valroot', required=False, help='path to val dataset')
 args = parser.parse_args()
 
 if not os.path.exists(params.expr_dir):
@@ -38,22 +38,25 @@ if torch.cuda.is_available() and not params.cuda:
 In this block
     Get train and val data_loader
 """
-all_dataset = dataset.Dataset(params.datafilepath_crnn)
+all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
+label_list=all_dataset.label_list
+batch_size=params.batchSize
 
 def data_loader(all_dataset):
     assert all_dataset
     train_length=int(len(all_dataset)*0.8)
-    train_dataset,val_dataset=random_split(all_dataset,[train_length,len(all_dataset)-train_length])
+    train_dataset,val_dataset=dataset.int_split(all_dataset,5,0.2)
+    #train_dataset,val_dataset=random_split(all_dataset,[train_length,len(all_dataset)-train_length])
 
-    train_loader = DataLoader(train_dataset,batch_size=batch_size, \
+    train_loader = torch.utils.data.DataLoader(train_dataset,batch_size=batch_size, \
             shuffle=True)
     # val
-    val_loader = DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
 
     return train_loader, val_loader
 
 train_loader, val_loader = data_loader(all_dataset)
-
+nclass = len(all_dataset.label_list)
 # -----------------------------------------------
 """
 In this block
@@ -113,7 +116,7 @@ In this block
         image, text, length is used by both val and train
         because train and val will never use it at the same time.
 """
-image = torch.FloatTensor(params.batchSize, channel_input, params.imgH, params.imgH)
+image = torch.FloatTensor(params.batchSize, channel_input, cirH, cirH)
 text = torch.LongTensor(params.batchSize * 5)
 length = torch.LongTensor(params.batchSize)
 
@@ -173,7 +176,7 @@ if params.dealwith_lossnan:
 def val(net, criterion):
     print('Start val')
 
-    for p in crnn.parameters():
+    for p in net.parameters():
         p.requires_grad = False
 
     net.eval()
@@ -181,6 +184,7 @@ def val(net, criterion):
 
     i = 0
     n_correct = 0
+    char_correct = 0
     loss_avg = utils.averager() # The blobal loss_avg is used by train
 
     max_iter = len(val_loader)
@@ -190,11 +194,11 @@ def val(net, criterion):
         cpu_images, cpu_texts = data
         batch_size = cpu_images.size(0)
         utils.loadData(image, cpu_images)
-        t, l = converter.encode(cpu_texts)
+        t, l = converter.encode(cpu_texts,label_list)
         utils.loadData(text, t)
         utils.loadData(length, l)
 
-        preds = crnn(image)
+        preds = net(image)
         preds_size = Variable(torch.LongTensor([preds.size(0)] * batch_size))
         cost = criterion(preds, text, preds_size, length) / batch_size
         loss_avg.add(cost)
@@ -204,59 +208,66 @@ def val(net, criterion):
         sim_preds = converter.decode(preds.data, preds_size.data, raw=False)
         cpu_texts_decode = []
         for i in cpu_texts:
-            cpu_texts_decode.append(i.decode('utf-8', 'strict'))
+            cpu_texts_decode.append(label_list[i])
         for pred, target in zip(sim_preds, cpu_texts_decode):
             if pred == target:
                 n_correct += 1
 
-    raw_preds = converter.decode(preds.data, preds_size.data, raw=True)[:params.n_val_disp]
-    for raw_pred, pred, gt in zip(raw_preds, sim_preds, cpu_texts_decode):
-        print('%-20s => %-20s, gt: %-20s' % (raw_pred, pred, gt))
+        raw_preds = converter.decode(preds.data, preds_size.data, raw=True)[:params.n_val_disp]
+        for raw_pred, pred, gt in zip(raw_preds, sim_preds, cpu_texts_decode):
+            print('%-20s => %-20s, gt: %-20s' % (raw_pred, pred, gt))
 
     accuracy = n_correct / float(max_iter * params.batchSize)
-    print('Val loss: %f, accuray: %f' % (loss_avg.val(), accuracy))
-
+    print('Val loss: %f, accuracy: %f' % (loss_avg.val(), accuracy))
+    return accuracy
 
 def train(net, criterion, optimizer, train_iter):
-    for p in crnn.parameters():
+    for p in net.parameters():
         p.requires_grad = True
-    crnn.train()
+    net.train()
 
     data = train_iter.next()
     cpu_images, cpu_texts = data
     batch_size = cpu_images.size(0)
     utils.loadData(image, cpu_images)
-    t, l = converter.encode(cpu_texts)
+    t, l = converter.encode(cpu_texts,label_list)
     utils.loadData(text, t)
     utils.loadData(length, l)
 
     optimizer.zero_grad()
-    preds = crnn(image)
+    preds = net(image)
     preds_size = Variable(torch.LongTensor([preds.size(0)] * batch_size))
     cost = criterion(preds, text, preds_size, length) / batch_size
-    # crnn.zero_grad()
+    # net.zero_grad()
     cost.backward()
     optimizer.step()
     return cost
 
 
 if __name__ == "__main__":
+    best_accuracy=0
     for epoch in range(params.nepoch):
         train_iter = iter(train_loader)
         i = 0
+        data_num=len(train_loader)
         while i < len(train_loader):
             cost = train(crnn, criterion, optimizer, train_iter)
             loss_avg.add(cost)
             i += 1
-
-            if i % params.displayInterval == 0:
+            displayInterval=int(data_num/params.displayPerEpoch)
+            if displayInterval==0: displayInterval=1
+            valInterval=int(data_num/params.valPerEpoch)
+            if valInterval==0: valInterval=1
+            if i % displayInterval == 0:
                 print('[%d/%d][%d/%d] Loss: %f' %
                       (epoch, params.nepoch, i, len(train_loader), loss_avg.val()))
                 loss_avg.reset()
 
-            if i % params.valInterval == 0:
-                val(crnn, criterion)
-
+            if i % valInterval == 0:
+                accuracy=val(crnn, criterion)
+                if accuracy>best_accuracy:
+                    best_accuracy=accuracy
             # do checkpointing
             if i % params.saveInterval == 0:
                 torch.save(crnn.state_dict(), '{0}/netCRNN_{1}_{2}.pth'.format(params.expr_dir, epoch, i))
+    print("best accuracy:",best_accuracy)

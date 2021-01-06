@@ -50,13 +50,17 @@ class CRNN(nn.Module):
         convRelu(1)
         cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))
         convRelu(2,True)
-        convRelu(3)
         cnn.add_module('pooling{0}'.format(2),
-                       nn.MaxPool2d((2, 2), (1, 1), (1, 1)))  # 256x4x16
-        convRelu(4, True)
-        convRelu(5)
+                       nn.MaxPool2d((2, 2)))  # 256x4x16
+        convRelu(3)
         cnn.add_module('pooling{0}'.format(3),
-                       nn.MaxPool2d((2, 2), (1, 1), (0, 1)))  # 512x2x16
+                       nn.MaxPool2d((2, 2)))  # 256x4x16
+        convRelu(4, True)
+        cnn.add_module('pooling{0}'.format(4),
+                       nn.MaxPool2d((2, 2)))  # 256x4x16
+        convRelu(5)
+        cnn.add_module('pooling{0}'.format(5),
+                       nn.MaxPool2d((2, 2), (1, 2), (0, 1)))  # 512x2x16
         convRelu(6, True)  # 512x1x16
 
         self.cnn = cnn
@@ -67,9 +71,9 @@ class CRNN(nn.Module):
     def forward(self, input):
         # conv features
         conv = self.cnn(input)
-        b, c, h, w = conv.size()
-        assert h == 1, "the height of conv must be 1"
-        conv = conv.squeeze(2)
+        b, c, w, h = conv.size()
+        assert h == 1, "the height of conv must be 1,now is {},width is {}".format(h,w)
+        conv = conv.squeeze(3) #remove the height
         conv = conv.permute(2, 0, 1)  # [w, b, c]
 
         # rnn features

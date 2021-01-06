@@ -1,8 +1,8 @@
-import alphabets
+import string
 
 # about data and net
 datafilepath_crnn="../GSM_generation/training_data/Word"
-alphabet = alphabets.alphabet
+alphabet =string.ascii_lowercase
 keep_ratio = False # whether to keep ratio for image resize
 manualSeed = 1234 # reproduce experiment
 random_sample = True # whether to sample the dataset with random sampler
@@ -18,14 +18,16 @@ ngpu = 1 # number of GPUs to use. Do remember to set multi_gpu to True!
 workers = 0 # number of data loading workers
 
 # training process
-displayInterval = 100 # interval to be print the train loss
-valInterval = 1000 # interval to val the model loss and accuray
-saveInterval = 1000 # interval to save model
+displayPerEpoch = 4 # interval to be print the train loss
+valPerEpoch = 1 # interval to val the model loss and accuray
+valInterval = 100
+displayInterval = 100
+saveInterval = 1000000 # interval to save model
 n_val_disp = 10 # number of samples to display when val the model
 
 # finetune
-nepoch = 1000 # number of epochs to train for
-batchSize = 64 # input batch size
+nepoch = 100 # number of epochs to train for
+batchSize = 20 # input batch size
 lr = 0.0001 # learning rate for Critic, not used by adadealta
 beta1 = 0.5 # beta1 for adam. default=0.5
 adam = False # whether to use adam (default is rmsprop)
