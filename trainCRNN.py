@@ -11,6 +11,7 @@ from torch.nn import CTCLoss
 import os
 import utility as utils
 import dataset
+from difflib import SequenceMatcher
 
 import models.CRNN as net
 import params
@@ -185,6 +186,7 @@ def val(net, criterion):
     i = 0
     n_correct = 0
     char_correct = 0
+    char_count=0
     loss_avg = utils.averager() # The blobal loss_avg is used by train
 
     max_iter = len(val_loader)
@@ -210,16 +212,24 @@ def val(net, criterion):
         for i in cpu_texts:
             cpu_texts_decode.append(label_list[i])
         for pred, target in zip(sim_preds, cpu_texts_decode):
+            char_count+=len(target)
             if pred == target:
                 n_correct += 1
-
+                char_correct+=len(target)
+            else:
+                matching_blocks = SequenceMatcher(None, pred, target).get_matching_blocks()
+                sim_len=0
+                for block in matching_blocks:
+                    sim_len+=block.size
+                char_correct+=sim_len
         raw_preds = converter.decode(preds.data, preds_size.data, raw=True)[:params.n_val_disp]
         for raw_pred, pred, gt in zip(raw_preds, sim_preds, cpu_texts_decode):
             print('%-20s => %-20s, gt: %-20s' % (raw_pred, pred, gt))
 
     accuracy = n_correct / float(max_iter * params.batchSize)
-    print('Val loss: %f, accuracy: %f' % (loss_avg.val(), accuracy))
-    return accuracy
+    sim_accuracy = char_correct / char_count
+    print('Val loss: %f, accuracy: %f, character_accuracy: %f' % (loss_avg.val(), accuracy,sim_accuracy))
+    return accuracy, sim_accuracy
 
 def train(net, criterion, optimizer, train_iter):
     for p in net.parameters():
@@ -246,6 +256,9 @@ def train(net, criterion, optimizer, train_iter):
 
 if __name__ == "__main__":
     best_accuracy=0
+    best_sim_accuracy=0
+    best_epoch=0
+    best_epoch_sim=0
     for epoch in range(params.nepoch):
         train_iter = iter(train_loader)
         i = 0
@@ -263,11 +276,16 @@ if __name__ == "__main__":
                       (epoch, params.nepoch, i, len(train_loader), loss_avg.val()))
                 loss_avg.reset()
 
-            if i % valInterval == 0:
-                accuracy=val(crnn, criterion)
+            if epoch>=50 and epoch%params.valEpochInterval==0 and i % valInterval == 0:
+                accuracy,sim_accuracy=val(crnn, criterion)
                 if accuracy>best_accuracy:
                     best_accuracy=accuracy
+                    best_epoch=epoch
+                if sim_accuracy>best_sim_accuracy:
+                    best_sim_accuracy=sim_accuracy
+                    best_epoch_sim=epoch
             # do checkpointing
             if i % params.saveInterval == 0:
                 torch.save(crnn.state_dict(), '{0}/netCRNN_{1}_{2}.pth'.format(params.expr_dir, epoch, i))
-    print("best accuracy:",best_accuracy)
+    print("best accuracy:{},at epoch:{}".format(best_accuracy,best_epoch))
+    print("best sim accuracy:{},at epoch:{}".format(best_sim_accuracy,best_epoch_sim))

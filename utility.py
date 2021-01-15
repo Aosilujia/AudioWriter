@@ -193,7 +193,7 @@ class strLabelConverter(object):
         self._ignore_case = ignore_case
         if self._ignore_case:
             alphabet = alphabet.lower()
-        self.alphabet = alphabet + '-'  # for `-1` index
+        self.alphabet = alphabet + '=' + '-' # '=' is special label,'-' for `-1` index
 
         self.dict = {}
         for i, char in enumerate(alphabet):

@@ -38,7 +38,7 @@ def preprocess_cir(filepath):
     diff_amp_sample = np.diff(amp_sample,n=1,axis=0)
     # padding_diff_ang_sample, padding_diff_amp_sample = 0,0
 
-    sample = np.stack((real_sample, imag_sample,diff_sample.real), axis=0)
+    sample = np.stack((real_sample, imag_sample,amp_diff_sample), axis=0)
     #sample = np.asarray([amp_diff_sample])
     """标签预处理"""
     user_tag=os.path.basename(os.path.split(filepath)[0])
@@ -98,9 +98,10 @@ class diskDataset(Dataset):
     def __getitem__(self,idx):
         """transform预处理"""
         datum,tag=self.all_data[idx],self.all_tags[idx]
+        sourcefile=self.source_files[idx]
         if self.transform is not None:
             datum = self.transform(datum)
-        return datum,tag
+        return datum,tag,sourcefile
 
     @property
     def label_list(self):
@@ -168,9 +169,10 @@ class Dataset(Dataset):
     def __getitem__(self,idx):
         """transform预处理"""
         datum,tag=self.all_data[idx],self.all_tags[idx]
+        sourcefile=self.source_files[idx]
         if self.transform is not None:
             datum = self.transform(datum)
-        return datum,tag
+        return datum,tag,sourcefile
 
     @property
     def label_list(self):

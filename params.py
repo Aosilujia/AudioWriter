@@ -19,14 +19,15 @@ workers = 0 # number of data loading workers
 
 # training process
 displayPerEpoch = 4 # interval to be print the train loss
-valPerEpoch = 1 # interval to val the model loss and accuray
+valPerEpoch = 2 # interval to val the model loss and accuray
 valInterval = 100
+valEpochInterval = 5
 displayInterval = 100
 saveInterval = 1000000 # interval to save model
 n_val_disp = 10 # number of samples to display when val the model
 
 # finetune
-nepoch = 100 # number of epochs to train for
+nepoch = 1200 # number of epochs to train for
 batchSize = 20 # input batch size
 lr = 0.0001 # learning rate for Critic, not used by adadealta
 beta1 = 0.5 # beta1 for adam. default=0.5
