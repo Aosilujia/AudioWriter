@@ -14,7 +14,7 @@ if not torch.cuda.is_available():
     device = torch.device('cpu')
 
 num_epochs = 75
-batch_size = 40
+batch_size = 80
 learning_rate = 0.0001
 val_interval = 5
 
@@ -24,8 +24,10 @@ val_interval = 5
 In this block
     Get train and val data_loader
 """
-all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
-dorm_dataset=dataset.diskDataset("../GSM_generation/training_data/Word_jxydorm",max_length=all_dataset.datashape[2],initlabels=all_dataset.label_list)
+#all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
+all_dataset = dataset.Dataset("augcir_moving2.npz")
+label_list=all_dataset.label_list
+dorm_dataset=dataset.diskDataset("../GSM_generation/training_data/Word_jxydorm",max_length=all_dataset.datashape[2],initlabels=label_list)
 
 def data_loader(all_dataset):
     assert all_dataset
@@ -43,13 +45,16 @@ def data_loader(all_dataset):
     return train_loader, val_loader
 
 train_loader, val_loader= data_loader(all_dataset)
+print("training data:{0}".format(len(train_loader)))
+print("val data:{0}".format(len(val_loader)))
 dorm_loader= DataLoader(dorm_dataset,batch_size=batch_size, shuffle=True)
 # -----------------------------------------------
 """
     data augmentation tranformation
 """
 
-num_classes = len(all_dataset.label_list)
+num_classes = len(label_list)
+
 #Model initialization
 model = CNN(num_classes,channel_input=all_dataset.channel).to(device)
 
@@ -82,13 +87,13 @@ def val(cm_save=False):
         correct_twoclass=0
         total = 0
         error_file_list=[]
-        for i, (images, labels,sources) in enumerate(val_loader):
+        for i, (images, all_labels,sources) in enumerate(val_loader):
             """for image in images:
                 plt.imshow(image.permute(1,2,0))
                 print(labels)
                 plt.show()"""
             images = images.to(device)
-            labels = labels.to(device)
+            labels = all_labels[0].to(device)
             outputs = model(images)
             #print(outputs.data)
             t, predicted = torch.max(outputs.data, 1)
@@ -108,7 +113,7 @@ def val(cm_save=False):
         print('Accuracy within two results on the {} valid images: {} %'.format(total , 100 * correct_twoclass / total))
         if cm_save==True:
             np.save('confusion_matrix',conf_matrix.numpy())
-            np.save('labels',np.asarray(all_dataset.label_list))
+            np.save('labels',np.asarray(label_list))
             np.save('wrong_files',error_file_list)
     model.train() #切回训练模式
     return
@@ -116,9 +121,9 @@ def val(cm_save=False):
 # Train the model
 total_step = len(train_loader)
 for epoch in range(num_epochs):
-    for i, (images, labels, sources) in enumerate(train_loader):
+    for i, (images, all_labels, sources) in enumerate(train_loader):
         images = images.to(device)
-        labels = labels.to(device)
+        labels = all_labels[0].to(device)
 
         # Forward pass
         outputs = model(images)

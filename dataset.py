@@ -21,6 +21,11 @@ def normalize01(a):
 def preprocess_cir(filepath):
     cir_data=np.genfromtxt(filepath, dtype=complex, delimiter=',')
     """数据预处理"""
+    #上下限切割
+    #np.clip(cir_data.real, -0.03, 0.03, out=cir_data.real)
+    #np.clip(cir_data.imag, 0, 4, out=cir_data.imag)
+
+    """各个维度的数据"""
     real_sample =cir_data.real
     imag_sample =cir_data.imag
     amp_sample = np.abs(cir_data)
@@ -59,13 +64,15 @@ class diskDataset(Dataset):
         if not os.path.isdir(directory_name):
             print(path+" is not a directory")
             return
+        print("reading dataset from disk:"+directory_name)
         self.transform = transform
         """设置标签"""
-        labels=initlabels
+        labels=initlabels[:]
+        labels_full=initlabels[:]
         samples=[]
         tag_data=[]
+        tag_full_data=[]
         sourcefile=[]
-        max=0.0
         """遍历文件读数据"""
         filepaths=csvfilelist(directory_name)
         #pool = multiprocessing.Pool(processes=5)
@@ -76,10 +83,14 @@ class diskDataset(Dataset):
             i=preprocess_cir(path)
             sample=i[0]
             tag=i[1]
+            tag_full=i[2]
             samples.append(sample)
             tag_data.append(tag)
+            tag_full_data.append(tag_full)
             if tag not in labels:
                 labels.append(tag)
+            if tag_full not in labels_full:
+                labels_full.append(tag_full)
         padded_samples = padding(samples,max_length)
         self.data_shape=padded_samples.shape
         self.all_data=torch.from_numpy(padded_samples).float()
@@ -89,6 +100,10 @@ class diskDataset(Dataset):
         le.fit(labels)
         self.labels=labels
         self.all_tags=torch.tensor(le.transform(tag_data))
+        le2=preprocessing.LabelEncoder()
+        le2.fit(labels_full)
+        self.labels_full=labels_full
+        self.all_full_tags=torch.tensor(le2.transform(tag_full_data))
         print("{} dataset datashape is:".format(directory_name))
         print(self.data_shape)
 
@@ -97,16 +112,21 @@ class diskDataset(Dataset):
 
     def __getitem__(self,idx):
         """transform预处理"""
-        datum,tag=self.all_data[idx],self.all_tags[idx]
+        datum,tag,tag_full=self.all_data[idx],self.all_tags[idx],self.all_full_tags[idx]
         sourcefile=self.source_files[idx]
         if self.transform is not None:
             datum = self.transform(datum)
-        return datum,tag,sourcefile
+        return datum,[tag,tag_full],sourcefile
 
     @property
     def label_list(self):
         #所有种类标签
         return self.labels
+
+    @property
+    def label_full_list(self):
+        #所有种类标签
+        return self.labels_full
 
     @property
     def tags(self):
@@ -132,9 +152,11 @@ class Dataset(Dataset):
         if not datafile_name.endswith('.npz'):
             print(datafile_name+" is not a npz file")
             return
+        print("reading dataset from packed file:"+datafile_name)
         self.transform = transform
         """设置初始标签，用来同步多数据集的标签编号"""
-        labels=initlabels
+        labels=initlabels[:]
+        labels_full=initlabels[:]
 
         """读数据文件"""
         origin_data=np.load(datafile_name)
@@ -149,17 +171,26 @@ class Dataset(Dataset):
         for newlabel in originlabels:
             if newlabel not in labels:
                 labels.append(newlabel)
+                labels_full.append(newlabel)
+                labels_full.append('='+newlabel)
 
         padded_samples = padding(samples,max_length) #统一数据长度
         self.data_shape=padded_samples.shape
         self.all_data=torch.from_numpy(padded_samples).float() #转为torch tensor
         self.source_files=sourcefile
-        self.ground_tag=tag_ground
+        self.ground_tags=tag_ground
         """索引标签到编号"""
         le=preprocessing.LabelEncoder()
         le.fit(labels)
         self.labels=labels
         self.all_tags=torch.tensor(le.transform(tag_data))
+
+        le2=preprocessing.LabelEncoder()
+        le2.fit(labels_full)
+        self.labels_full=labels_full
+        self.all_full_tags=torch.tensor(le2.transform(tag_full))
+
+
         print("{} dataset datashape is:".format(datafile_name))
         print(self.data_shape)
 
@@ -168,11 +199,12 @@ class Dataset(Dataset):
 
     def __getitem__(self,idx):
         """transform预处理"""
-        datum,tag=self.all_data[idx],self.all_tags[idx]
+        datum,tag,tag_full=self.all_data[idx],self.all_tags[idx],self.all_full_tags[idx]
+        tag_ground=self.ground_tags[idx]
         sourcefile=self.source_files[idx]
         if self.transform is not None:
             datum = self.transform(datum)
-        return datum,tag,sourcefile
+        return datum,[tag,tag_full,tag_ground],sourcefile
 
     @property
     def label_list(self):
@@ -193,20 +225,20 @@ class Dataset(Dataset):
         return self.data_shape
 
     @property
-    def groundtag(self):
-        return self.ground_tag
+    def groundtags(self):
+        return self.ground_tags
 
     @property
     def sourcefiles(self):
         return self.source_files
 
-def packCIRData(directory_name,outputfile="cirdata.npz",initlabels=[],environment=""):
+def packCIRData(directory_name,outputfile="cirdata.npz",initlabels=[],environment="",randomshift_n=1):
     """ 读所有cir csv文件打包到一个npz里面"""
     samples=[]
     tag_data=[] #标签
     tag_ground=[]
     tag_full_data=[]
-    sourcefile=[]
+    sourcefiles=[]
     labels=initlabels #标签种类
     max=0.0
     """遍历文件读数据"""
@@ -215,7 +247,7 @@ def packCIRData(directory_name,outputfile="cirdata.npz",initlabels=[],environmen
     #it = pool.imap_unordered(preprocess_cir, filepaths)
     #for i in it:
     for path in filepaths:
-        sourcefile.append(path)
+        sourcefiles.append(path)
         i=preprocess_cir(path)
         sample=i[0]
         tag=i[1]
@@ -227,14 +259,21 @@ def packCIRData(directory_name,outputfile="cirdata.npz",initlabels=[],environmen
         if tag not in labels:
             labels.append(tag)
     padded_samples = padding(samples,-1)
-    #数据增强：随机填充空白(左右移动)
-    random_padded_samples= padding(samples,-1,padding_position=2)
-    all_samples=np.concatenate((padded_samples,random_padded_samples),axis=0)
-    tag_data=tag_data+tag_data
-    tag_full=tag_full+tag_full
-    tag_ground=tag_ground+[False]*len(tag_ground)
-    sourcefile=sourcefile+sourcefile
-    np.savez(outputfile,samples=all_samples,tags=tag_data,tag_full=tag_full,labels=labels,sources=sourcefile,tag_ground=tag_ground)
+    all_tag_data=tag_data
+    all_tag_full_data=tag_full_data
+    all_tag_ground=tag_ground
+    all_sourcefiles=sourcefiles
+    """数据增强：随机填充空白(左右移动)"""
+    for i in range(randomshift_n):
+        random_padded_samples= padding(samples,-1,padding_position=2)
+        padded_samples=np.concatenate((padded_samples,random_padded_samples),axis=0)
+        all_tag_data=all_tag_data+tag_data
+        all_tag_full_data=all_tag_full_data+tag_full_data
+        all_tag_ground=all_tag_ground+[False]*len(tag_ground)
+        all_sourcefiles=all_sourcefiles+sourcefiles
+    all_samples=padded_samples
+    print(labels)
+    np.savez(outputfile,samples=all_samples,tags=all_tag_data,tag_full=all_tag_full_data,labels=labels,sources=all_sourcefiles,tag_ground=all_tag_ground)
 
 def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
     """
@@ -250,8 +289,8 @@ def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
     labels=dataset.label_list
     tags=dataset.tags
     tag_ground=[]
-    if hasattr(dataset,"groundtag"):
-        tag_ground=dataset.groundtag
+    if hasattr(dataset,"groundtags"):
+        tag_ground=dataset.groundtags
     else:
         tag_ground=[True]*len(tags)
     sources=dataset.sourcefiles
@@ -260,13 +299,16 @@ def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
     """因为有增强的数据，所以要注意是否是groundtruth"""
     tag_indices=[]
     ground_indices=[]
+    #初始化tag下标二维数组
     for i in range(len(labels)):
         tag_indices.append([])
         ground_indices.append([])
+    #将数据集中tag加入tag数组
     for indice,tag in enumerate(tags):
         tag_indices[tag].append(indice)
         if tag_ground[indice]:
             ground_indices[tag].append(indice)
+    #遍历每个label对应的所有标签
     for i in range(len(labels)):
         tag_indice=tag_indices[i]
         ground_indice=ground_indices[i]
@@ -274,6 +316,7 @@ def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
         val_length=length
         if partial<1:
             val_length=int(partial*len(ground_indice))
+        #从ground truth抽取作为验证集的下标
         val_indice=random.sample(ground_indice,val_length)
         val_indices.append(val_indice)
         for value in val_indice: #抽中的当验证集的数据的下标
@@ -292,8 +335,9 @@ def data_augmentation(sample):
 
 
 if __name__ == '__main__':
-    #dataset=Dataset("../GSM_generation/training_data/Alge")
-    packCIRData("../GSM_generation/training_data/Word_jxydorm","testcir.npz")
+    #dataset=diskDataset("../GSM_generation/training_data/Word")
+    #packCIRData("../GSM_generation/training_data/Word","augcir_moving2.npz",randomshift_n=2)
+    #packCIRData("../GSM_generation/training_data/Word_jxydorm","testcir.npz",randomshift_n=2)
     dataset=Dataset("testcir.npz")
-    set1,set2=int_split(dataset,2,partial=0.2)
-    print(len(set1))
+    #set1,set2=int_split(dataset,2,partial=0.2)
+    #print(len(set1))

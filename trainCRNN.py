@@ -39,7 +39,8 @@ if torch.cuda.is_available() and not params.cuda:
 In this block
     Get train and val data_loader
 """
-all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
+#all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
+all_dataset = dataset.Dataset("augcir_moving2.npz")
 label_list=all_dataset.label_list
 batch_size=params.batchSize
 
@@ -128,7 +129,7 @@ if params.cuda and torch.cuda.is_available():
 
     crnn = crnn.cuda()
     if params.multi_gpu:
-        crnn = torch.nn.DataParallel(crnn, device_ids=range(params.ngpu))
+        crnn = torch.nn.DataParallel(crnn, device_ids=params.device_ids)
 
 image = Variable(image)
 text = Variable(text)
@@ -193,10 +194,10 @@ def val(net, criterion):
     for i in range(max_iter):
         data = val_iter.next()
         i += 1
-        cpu_images, cpu_texts = data
+        cpu_images, cpu_texts, cpu_sources= data
         batch_size = cpu_images.size(0)
         utils.loadData(image, cpu_images)
-        t, l = converter.encode(cpu_texts,label_list)
+        t, l = converter.encode(cpu_texts[0],label_list)
         utils.loadData(text, t)
         utils.loadData(length, l)
 
@@ -209,7 +210,7 @@ def val(net, criterion):
         preds = preds.transpose(1, 0).contiguous().view(-1)
         sim_preds = converter.decode(preds.data, preds_size.data, raw=False)
         cpu_texts_decode = []
-        for i in cpu_texts:
+        for i in cpu_texts[0]:
             cpu_texts_decode.append(label_list[i])
         for pred, target in zip(sim_preds, cpu_texts_decode):
             char_count+=len(target)
@@ -237,10 +238,10 @@ def train(net, criterion, optimizer, train_iter):
     net.train()
 
     data = train_iter.next()
-    cpu_images, cpu_texts = data
+    cpu_images, cpu_texts ,cpu_source= data
     batch_size = cpu_images.size(0)
     utils.loadData(image, cpu_images)
-    t, l = converter.encode(cpu_texts,label_list)
+    t, l = converter.encode(cpu_texts[0],label_list)
     utils.loadData(text, t)
     utils.loadData(length, l)
 
@@ -285,7 +286,7 @@ if __name__ == "__main__":
                     best_sim_accuracy=sim_accuracy
                     best_epoch_sim=epoch
             # do checkpointing
-            if i % params.saveInterval == 0:
-                torch.save(crnn.state_dict(), '{0}/netCRNN_{1}_{2}.pth'.format(params.expr_dir, epoch, i))
+        if epoch % params.saveInterval == 0 or epoch==params.nepoch-1:
+            torch.save(crnn.state_dict(), '{0}/netCRNN_{1}_.pth'.format(params.expr_dir, epoch))
     print("best accuracy:{},at epoch:{}".format(best_accuracy,best_epoch))
     print("best sim accuracy:{},at epoch:{}".format(best_sim_accuracy,best_epoch_sim))

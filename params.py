@@ -8,13 +8,13 @@ manualSeed = 1234 # reproduce experiment
 random_sample = True # whether to sample the dataset with random sampler
 nh = 256 # size of the lstm hidden state
 pretrained = '' # path to pretrained model (to continue training)
-expr_dir = 'expr' # where to store samples and models
+expr_dir = 'expmodels' # where to store samples and models
 dealwith_lossnan = False # whether to replace all nan/inf in gradients to zero
 
 # hardware
 cuda = True # enables cuda
-multi_gpu = False # whether to use multi gpu
-ngpu = 1 # number of GPUs to use. Do remember to set multi_gpu to True!
+multi_gpu = True # whether to use multi gpu
+device_ids = (2,3)
 workers = 0 # number of data loading workers
 
 # training process
@@ -28,7 +28,7 @@ n_val_disp = 10 # number of samples to display when val the model
 
 # finetune
 nepoch = 1200 # number of epochs to train for
-batchSize = 20 # input batch size
+batchSize = 100 # input batch size
 lr = 0.0001 # learning rate for Critic, not used by adadealta
 beta1 = 0.5 # beta1 for adam. default=0.5
 adam = False # whether to use adam (default is rmsprop)

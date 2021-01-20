@@ -45,9 +45,9 @@ class CRNN(nn.Module):
             else:
                 cnn.add_module('relu{0}'.format(i), nn.ReLU(True))
 
-        convRelu(0)
+        convRelu(0,True)
         cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(2, 2))
-        convRelu(1)
+        convRelu(1,True)
         cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(2, 2))
         convRelu(2,True)
         cnn.add_module('pooling{0}'.format(2),
