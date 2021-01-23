@@ -210,7 +210,6 @@ class strLabelConverter(object):
             torch.LongTensor [length_0 + length_1 + ... length_{n - 1}]: encoded texts.
             torch.LongTensor [n]: length of each text.
         """
-
         length = []
         result = []
         for item in text:

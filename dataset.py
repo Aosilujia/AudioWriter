@@ -8,7 +8,6 @@ import numpy as np
 import multiprocessing
 from torch.utils.data import Dataset,sampler,Subset
 import torchvision.transforms as transforms
-from sklearn import preprocessing
 from utility import csvfilelist,padding
 from typing import List
 
@@ -96,14 +95,11 @@ class diskDataset(Dataset):
         self.all_data=torch.from_numpy(padded_samples).float()
         self.source_files=sourcefile
         """索引标签到编号"""
-        le=preprocessing.LabelEncoder()
-        le.fit(labels)
         self.labels=labels
-        self.all_tags=torch.tensor(le.transform(tag_data))
-        le2=preprocessing.LabelEncoder()
-        le2.fit(labels_full)
+        self.all_tags=torch.tensor(label_mapping(tag_data,labels))
+
         self.labels_full=labels_full
-        self.all_full_tags=torch.tensor(le2.transform(tag_full_data))
+        self.all_full_tags=torch.tensor(label_mapping(tag_full_data,labels_full))
         print("{} dataset datashape is:".format(directory_name))
         print(self.data_shape)
 
@@ -180,16 +176,11 @@ class Dataset(Dataset):
         self.source_files=sourcefile
         self.ground_tags=tag_ground
         """索引标签到编号"""
-        le=preprocessing.LabelEncoder()
-        le.fit(labels)
         self.labels=labels
-        self.all_tags=torch.tensor(le.transform(tag_data))
+        self.all_tags=torch.tensor(label_mapping(tag_data,labels))
 
-        le2=preprocessing.LabelEncoder()
-        le2.fit(labels_full)
         self.labels_full=labels_full
-        self.all_full_tags=torch.tensor(le2.transform(tag_full))
-
+        self.all_full_tags=torch.tensor(label_mapping(tag_full,labels_full))
 
         print("{} dataset datashape is:".format(datafile_name))
         print(self.data_shape)
@@ -210,6 +201,11 @@ class Dataset(Dataset):
     def label_list(self):
         #所有种类标签
         return self.labels
+
+    @property
+    def label_full_list(self):
+        #所有种类标签
+        return self.labels_full
 
     @property
     def tags(self):
@@ -264,15 +260,15 @@ def packCIRData(directory_name,outputfile="cirdata.npz",initlabels=[],environmen
     all_tag_ground=tag_ground
     all_sourcefiles=sourcefiles
     """数据增强：随机填充空白(左右移动)"""
-    for i in range(randomshift_n):
-        random_padded_samples= padding(samples,-1,padding_position=2)
-        padded_samples=np.concatenate((padded_samples,random_padded_samples),axis=0)
-        all_tag_data=all_tag_data+tag_data
-        all_tag_full_data=all_tag_full_data+tag_full_data
-        all_tag_ground=all_tag_ground+[False]*len(tag_ground)
-        all_sourcefiles=all_sourcefiles+sourcefiles
+    if (randomshift_n!=0):
+        for i in range(randomshift_n):
+            random_padded_samples= padding(samples,-1,padding_position=2)
+            padded_samples=np.concatenate((padded_samples,random_padded_samples),axis=0)
+            all_tag_data=all_tag_data+tag_data
+            all_tag_full_data=all_tag_full_data+tag_full_data
+            all_tag_ground=all_tag_ground+[False]*len(tag_ground)
+            all_sourcefiles=all_sourcefiles+sourcefiles
     all_samples=padded_samples
-    print(labels)
     np.savez(outputfile,samples=all_samples,tags=all_tag_data,tag_full=all_tag_full_data,labels=labels,sources=all_sourcefiles,tag_ground=all_tag_ground)
 
 def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
@@ -333,11 +329,22 @@ def data_augmentation(sample):
     """
     return 0
 
+def label_mapping(tags,label_list)-> List[int]:
+    """
+    重写的其它类型映射到label，返回数字数组
+    """
+    label_dict={}
+    for i in range(len(label_list)):
+        label_dict[label_list[i]]=i
+    tags=list(map(label_dict.get,tags))
+    return tags
 
 if __name__ == '__main__':
-    #dataset=diskDataset("../GSM_generation/training_data/Word")
+    dataset=diskDataset("../GSM_generation/training_data/Word_jxydorm")
     #packCIRData("../GSM_generation/training_data/Word","augcir_moving2.npz",randomshift_n=2)
-    #packCIRData("../GSM_generation/training_data/Word_jxydorm","testcir.npz",randomshift_n=2)
-    dataset=Dataset("testcir.npz")
+    #packCIRData("../GSM_generation/training_data/Word","jxy_dataset.npz",randomshift_n=0)
+    #packCIRData("../GSM_generation/training_data/Word_jxynew","jxynew_dataset.npz",randomshift_n=0)
+    #dataset=Dataset("jxy_dataset.npz")
+    #dataset2=Dataset("jxynew_dataset.npz",initlabels=dataset.label_list)
     #set1,set2=int_split(dataset,2,partial=0.2)
     #print(len(set1))

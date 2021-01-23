@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import dataset
@@ -8,7 +9,7 @@ import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import utility
 
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 device = torch.device('cuda')
 if not torch.cuda.is_available():
     device = torch.device('cpu')
@@ -66,12 +67,12 @@ def val(cm_save=False):
     model.eval()  # eval mode (batchnorm uses moving mean/variance instead of mini-batch mean/variance)
     with torch.no_grad():
 
-        """     #跨数据集验证
+        #跨数据集验证
         correct = 0
         total = 0
-        for images, labels, sources in dorm_loader:
+        for images, all_labels, sources in dorm_loader:
             images = images.to(device)
-            labels = labels.to(device)
+            labels = all_labels[0].to(device)
             outputs = model(images)
             #print(outputs.data)
             t, predicted = torch.max(outputs.data, 1)
@@ -79,7 +80,7 @@ def val(cm_save=False):
             print (predicted,labels)
             correct += (predicted == labels).sum().item()
         print('Accuracy on the {}  test images: {} %'.format(total , 100 * correct / total))
-        """
+
         #验证集验证
         conf_matrix = torch.zeros(num_classes,num_classes) #初始化混淆矩阵
 

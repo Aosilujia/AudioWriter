@@ -16,6 +16,8 @@ from difflib import SequenceMatcher
 import models.CRNN as net
 import params
 
+os.environ['CUDA_VISIBLE_DEVICES'] = params.gpu_id
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-train', '--trainroot', required=False, help='path to train dataset')
 parser.add_argument('-val', '--valroot', required=False, help='path to val dataset')
@@ -42,6 +44,12 @@ In this block
 #all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
 all_dataset = dataset.Dataset("augcir_moving2.npz")
 label_list=all_dataset.label_list
+test_dataset = ""
+test_dataset = dataset.Dataset("jxynew_dataset.npz",initlabels=label_list)
+if (test_dataset!=""):
+    label_list=test_dataset.label_list
+used_tag=params.tag_choice
+
 batch_size=params.batchSize
 
 def data_loader(all_dataset):
@@ -58,7 +66,8 @@ def data_loader(all_dataset):
     return train_loader, val_loader
 
 train_loader, val_loader = data_loader(all_dataset)
-nclass = len(all_dataset.label_list)
+test_loader=torch.utils.data.DataLoader(test_dataset,batch_size=batch_size, shuffle=True)
+nclass = len(label_list)
 # -----------------------------------------------
 """
 In this block
@@ -73,6 +82,7 @@ def weights_init(m):
     elif classname.find('BatchNorm') != -1:
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
+
 
 def net_init(nclass,cirH,channel_input):
     nclass = len(params.alphabet) + 1
@@ -147,6 +157,9 @@ elif params.adadelta:
 else:
     optimizer = optim.RMSprop(crnn.parameters(), lr=params.lr)
 
+if params.multi_gpu:
+    crnn = torch.nn.DataParallel(crnn, device_ids=params.device_ids)
+
 # -----------------------------------------------
 """
 In this block
@@ -186,9 +199,10 @@ def val(net, criterion):
 
     i = 0
     n_correct = 0
+    n_count = 0
     char_correct = 0
     char_count=0
-    loss_avg = utils.averager() # The blobal loss_avg is used by train
+    loss_avg = utils.averager() # The global loss_avg is used by train
 
     max_iter = len(val_loader)
     for i in range(max_iter):
@@ -197,7 +211,7 @@ def val(net, criterion):
         cpu_images, cpu_texts, cpu_sources= data
         batch_size = cpu_images.size(0)
         utils.loadData(image, cpu_images)
-        t, l = converter.encode(cpu_texts[0],label_list)
+        t, l = converter.encode(cpu_texts[used_tag],label_list)
         utils.loadData(text, t)
         utils.loadData(length, l)
 
@@ -210,9 +224,10 @@ def val(net, criterion):
         preds = preds.transpose(1, 0).contiguous().view(-1)
         sim_preds = converter.decode(preds.data, preds_size.data, raw=False)
         cpu_texts_decode = []
-        for i in cpu_texts[0]:
+        for i in cpu_texts[used_tag]:
             cpu_texts_decode.append(label_list[i])
         for pred, target in zip(sim_preds, cpu_texts_decode):
+            n_count+=1
             char_count+=len(target)
             if pred == target:
                 n_correct += 1
@@ -227,10 +242,72 @@ def val(net, criterion):
         for raw_pred, pred, gt in zip(raw_preds, sim_preds, cpu_texts_decode):
             print('%-20s => %-20s, gt: %-20s' % (raw_pred, pred, gt))
 
-    accuracy = n_correct / float(max_iter * params.batchSize)
+    accuracy = n_correct / n_count
     sim_accuracy = char_correct / char_count
     print('Val loss: %f, accuracy: %f, character_accuracy: %f' % (loss_avg.val(), accuracy,sim_accuracy))
     return accuracy, sim_accuracy
+
+def test(net, criterion):
+    if (test_dataset==""):
+        return
+    print('Start test')
+
+    for p in net.parameters():
+        p.requires_grad = False
+
+    net.eval()
+    test_iter = iter(test_loader)
+
+    i = 0
+    n_correct = 0
+    n_count = 0
+    char_correct = 0
+    char_count=0
+    loss_avg = utils.averager() # The global loss_avg is used by train
+
+    max_iter = len(test_loader)
+    for i in range(max_iter):
+        data = test_iter.next()
+        i += 1
+        cpu_images, cpu_texts, cpu_sources= data
+        batch_size = cpu_images.size(0)
+        utils.loadData(image, cpu_images)
+        t, l = converter.encode(cpu_texts[used_tag],label_list)
+        utils.loadData(text, t)
+        utils.loadData(length, l)
+
+        preds = net(image)
+        preds_size = Variable(torch.LongTensor([preds.size(0)] * batch_size))
+        cost = criterion(preds, text, preds_size, length) / batch_size
+        loss_avg.add(cost)
+
+        _, preds = preds.max(2)
+        preds = preds.transpose(1, 0).contiguous().view(-1)
+        sim_preds = converter.decode(preds.data, preds_size.data, raw=False)
+        cpu_texts_decode = []
+        for i in cpu_texts[used_tag]:
+            cpu_texts_decode.append(label_list[i])
+        for pred, target in zip(sim_preds, cpu_texts_decode):
+            n_count+=1
+            char_count+=len(target)
+            if pred == target:
+                n_correct += 1
+                char_correct+=len(target)
+            else:
+                matching_blocks = SequenceMatcher(None, pred, target).get_matching_blocks()
+                sim_len=0
+                for block in matching_blocks:
+                    sim_len+=block.size
+                char_correct+=sim_len
+        raw_preds = converter.decode(preds.data, preds_size.data, raw=True)[:params.n_val_disp]
+        for raw_pred, pred, gt in zip(raw_preds, sim_preds, cpu_texts_decode):
+            print('%-20s => %-20s, gt: %-20s' % (raw_pred, pred, gt))
+
+    accuracy = n_correct / n_count
+    sim_accuracy = char_correct / char_count
+    print('Test loss: %f, accuracy: %f, character_accuracy: %f' % (loss_avg.val(), accuracy,sim_accuracy))
+    return accuracy, sim_accuracy
+
 
 def train(net, criterion, optimizer, train_iter):
     for p in net.parameters():
@@ -241,7 +318,7 @@ def train(net, criterion, optimizer, train_iter):
     cpu_images, cpu_texts ,cpu_source= data
     batch_size = cpu_images.size(0)
     utils.loadData(image, cpu_images)
-    t, l = converter.encode(cpu_texts[0],label_list)
+    t, l = converter.encode(cpu_texts[used_tag],label_list)
     utils.loadData(text, t)
     utils.loadData(length, l)
 
@@ -264,7 +341,9 @@ if __name__ == "__main__":
         train_iter = iter(train_loader)
         i = 0
         data_num=len(train_loader)
-        while i < len(train_loader):
+        if params.val_mode:
+            i=0
+        while i < data_num:
             cost = train(crnn, criterion, optimizer, train_iter)
             loss_avg.add(cost)
             i += 1
@@ -277,16 +356,28 @@ if __name__ == "__main__":
                       (epoch, params.nepoch, i, len(train_loader), loss_avg.val()))
                 loss_avg.reset()
 
-            if epoch>=50 and epoch%params.valEpochInterval==0 and i % valInterval == 0:
-                accuracy,sim_accuracy=val(crnn, criterion)
-                if accuracy>best_accuracy:
-                    best_accuracy=accuracy
-                    best_epoch=epoch
-                if sim_accuracy>best_sim_accuracy:
-                    best_sim_accuracy=sim_accuracy
-                    best_epoch_sim=epoch
+            if params.pretrained == '':
+                if epoch>=10 and epoch%params.valEpochInterval==0 and i % valInterval == 0:
+                    accuracy,sim_accuracy=val(crnn, criterion)
+                    test(crnn, criterion)
+                    if accuracy>best_accuracy:
+                        best_accuracy=accuracy
+                        best_epoch=epoch
+                    if sim_accuracy>best_sim_accuracy:
+                        best_sim_accuracy=sim_accuracy
+                        best_epoch_sim=epoch
+            else :
+                if epoch%params.valEpochInterval==0 and i % valInterval == 0:
+                    accuracy,sim_accuracy=val(crnn, criterion)
+                    if accuracy>best_accuracy:
+                        best_accuracy=accuracy
+                        best_epoch=epoch
+                    if sim_accuracy>best_sim_accuracy:
+                        best_sim_accuracy=sim_accuracy
+                        best_epoch_sim=epoch
             # do checkpointing
         if epoch % params.saveInterval == 0 or epoch==params.nepoch-1:
             torch.save(crnn.state_dict(), '{0}/netCRNN_{1}_.pth'.format(params.expr_dir, epoch))
     print("best accuracy:{},at epoch:{}".format(best_accuracy,best_epoch))
     print("best sim accuracy:{},at epoch:{}".format(best_sim_accuracy,best_epoch_sim))
+    np.save('crnn_accuracy_2',[best_epoch,best_accuracy,best_epoch_sim,best_sim_accuracy])
