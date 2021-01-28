@@ -43,11 +43,12 @@ In this block
 """
 #all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
 all_dataset = dataset.Dataset("augcir_moving2.npz")
-label_list=all_dataset.label_list
+label_list=all_dataset.label_full_list
 test_dataset = ""
-test_dataset = dataset.Dataset("jxynew_dataset.npz",initlabels=label_list)
+test_dataset = dataset.Dataset("jxydorm_dataset.npz",max_length=all_dataset.datashape[2],initlabels=label_list)
 if (test_dataset!=""):
-    label_list=test_dataset.label_list
+    label_list=test_dataset.label_full_list
+print(label_list)
 used_tag=params.tag_choice
 
 batch_size=params.batchSize
@@ -85,9 +86,10 @@ def weights_init(m):
 
 
 def net_init(nclass,cirH,channel_input):
-    nclass = len(params.alphabet) + 1
+    nclass = len(params.alphabet) + 2
     crnn = net.CRNN(cirH, channel_input, nclass, params.nh)
-    crnn.apply(weights_init)
+    if params.init_weight:
+        crnn.apply(weights_init)
     if params.pretrained != '':
         print('loading pretrained model from %s' % params.pretrained)
         if params.multi_gpu:
@@ -188,26 +190,26 @@ if params.dealwith_lossnan:
 
 # -----------------------------------------------
 
-def val(net, criterion):
+def val(net, criterion,data_loader):
     print('Start val')
 
     for p in net.parameters():
         p.requires_grad = False
 
     net.eval()
-    val_iter = iter(val_loader)
+    data_iter = iter(data_loader)
 
     i = 0
     n_correct = 0
     n_count = 0
     char_correct = 0
+    edit_correct = 0
     char_count=0
     loss_avg = utils.averager() # The global loss_avg is used by train
 
-    max_iter = len(val_loader)
-    for i in range(max_iter):
-        data = val_iter.next()
-        i += 1
+    max_iter = len(data_loader)
+    for data in data_iter:
+        #data = data_iter.next()
         cpu_images, cpu_texts, cpu_sources= data
         batch_size = cpu_images.size(0)
         utils.loadData(image, cpu_images)
@@ -232,7 +234,11 @@ def val(net, criterion):
             if pred == target:
                 n_correct += 1
                 char_correct+=len(target)
+                edit_correct+=len(target)
             else:
+                editdistance=utils.levenshteinDistance(pred,target)
+                if (editdistance<len(target)):
+                    edit_correct+=len(target)-editdistance
                 matching_blocks = SequenceMatcher(None, pred, target).get_matching_blocks()
                 sim_len=0
                 for block in matching_blocks:
@@ -244,70 +250,9 @@ def val(net, criterion):
 
     accuracy = n_correct / n_count
     sim_accuracy = char_correct / char_count
-    print('Val loss: %f, accuracy: %f, character_accuracy: %f' % (loss_avg.val(), accuracy,sim_accuracy))
+    edit_accuracy = edit_correct / char_count
+    print('Val loss: %f, accuracy: %f, match acc: %f, edit acc: %f' % (loss_avg.val(), accuracy,sim_accuracy,edit_accuracy))
     return accuracy, sim_accuracy
-
-def test(net, criterion):
-    if (test_dataset==""):
-        return
-    print('Start test')
-
-    for p in net.parameters():
-        p.requires_grad = False
-
-    net.eval()
-    test_iter = iter(test_loader)
-
-    i = 0
-    n_correct = 0
-    n_count = 0
-    char_correct = 0
-    char_count=0
-    loss_avg = utils.averager() # The global loss_avg is used by train
-
-    max_iter = len(test_loader)
-    for i in range(max_iter):
-        data = test_iter.next()
-        i += 1
-        cpu_images, cpu_texts, cpu_sources= data
-        batch_size = cpu_images.size(0)
-        utils.loadData(image, cpu_images)
-        t, l = converter.encode(cpu_texts[used_tag],label_list)
-        utils.loadData(text, t)
-        utils.loadData(length, l)
-
-        preds = net(image)
-        preds_size = Variable(torch.LongTensor([preds.size(0)] * batch_size))
-        cost = criterion(preds, text, preds_size, length) / batch_size
-        loss_avg.add(cost)
-
-        _, preds = preds.max(2)
-        preds = preds.transpose(1, 0).contiguous().view(-1)
-        sim_preds = converter.decode(preds.data, preds_size.data, raw=False)
-        cpu_texts_decode = []
-        for i in cpu_texts[used_tag]:
-            cpu_texts_decode.append(label_list[i])
-        for pred, target in zip(sim_preds, cpu_texts_decode):
-            n_count+=1
-            char_count+=len(target)
-            if pred == target:
-                n_correct += 1
-                char_correct+=len(target)
-            else:
-                matching_blocks = SequenceMatcher(None, pred, target).get_matching_blocks()
-                sim_len=0
-                for block in matching_blocks:
-                    sim_len+=block.size
-                char_correct+=sim_len
-        raw_preds = converter.decode(preds.data, preds_size.data, raw=True)[:params.n_val_disp]
-        for raw_pred, pred, gt in zip(raw_preds, sim_preds, cpu_texts_decode):
-            print('%-20s => %-20s, gt: %-20s' % (raw_pred, pred, gt))
-
-    accuracy = n_correct / n_count
-    sim_accuracy = char_correct / char_count
-    print('Test loss: %f, accuracy: %f, character_accuracy: %f' % (loss_avg.val(), accuracy,sim_accuracy))
-    return accuracy, sim_accuracy
-
 
 def train(net, criterion, optimizer, train_iter):
     for p in net.parameters():
@@ -357,9 +302,9 @@ if __name__ == "__main__":
                 loss_avg.reset()
 
             if params.pretrained == '':
-                if epoch>=10 and epoch%params.valEpochInterval==0 and i % valInterval == 0:
-                    accuracy,sim_accuracy=val(crnn, criterion)
-                    test(crnn, criterion)
+                if epoch>=5 and epoch%params.valEpochInterval==0 and i % valInterval == 0:
+                    accuracy,sim_accuracy=val(crnn, criterion,val_loader)
+                    val(crnn, criterion,test_loader)
                     if accuracy>best_accuracy:
                         best_accuracy=accuracy
                         best_epoch=epoch
@@ -368,7 +313,7 @@ if __name__ == "__main__":
                         best_epoch_sim=epoch
             else :
                 if epoch%params.valEpochInterval==0 and i % valInterval == 0:
-                    accuracy,sim_accuracy=val(crnn, criterion)
+                    accuracy,sim_accuracy=val(crnn, criterion,val_loader)
                     if accuracy>best_accuracy:
                         best_accuracy=accuracy
                         best_epoch=epoch
