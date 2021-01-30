@@ -275,6 +275,16 @@ class LmdbDataset(Dataset):
         self.nchannels=3 ## WARNING: hard coding
         self.nheight=121 ## WARNING: hard coding
 
+        """原始str标签，不带或带="""
+        self.tag_data=[]
+        self.tag_full_data=[]
+        self.source_files=[]
+        self.ground_tags=[]
+        """映射到数字int的标签"""
+        self.all_tags=[]
+        self.all_full_tags=[]
+
+
         print("initiating lmdb:",initdb)
 
         """初始化各数据集参数"""
@@ -288,11 +298,15 @@ class LmdbDataset(Dataset):
                 self.switchenv(db)
                 self.getdbparams()
 
+        """索引标签到编号"""
+        self.all_tags=torch.tensor(label_mapping(self.tag_data,self.labels))
+        self.all_full_tags=torch.tensor(label_mapping(self.tag_full_data,self.labels_full))
+
     """工具函数"""
     def getdbparams(self):
         with self.currentenv.begin() as txn:
             labels=pickle.loads(txn.get('labels'.encode('ascii')))
-            #处理并合并标签
+            """处理并合并标签"""
             for newlabel in labels:
                 if newlabel not in self.labels:
                     self.labels.append(newlabel)
@@ -305,6 +319,16 @@ class LmdbDataset(Dataset):
             self.length+=currentdbsize
             self.db_sizes.append(currentdbsize)
             self.index_bounds.append(self.length)
+            """遍历记录tag，以便根据tag分割数据集"""
+            for i in range(currentdbsize):
+                tag=pickle.loads(txn.get('tag_{}'.format(i).encode("ascii")))
+                tag_full=pickle.loads(txn.get('tag_full_{}'.format(i).encode("ascii")))
+                tag_ground=pickle.loads(txn.get('tag_ground_{}'.format(i).encode("ascii")))
+                sourcefile=pickle.loads(txn.get('source_{}'.format(i).encode("ascii")))
+                self.tag_data.append(tag)
+                self.tag_full_data.append(tag_full)
+                self.ground_tags.append(tag_ground)
+                self.source_files.append(sourcefile)
 
     def switchenv(self,dbname):
         #关闭上一个数据库，解除内存占用
@@ -319,7 +343,7 @@ class LmdbDataset(Dataset):
         self.currentdb=dbname
 
     def __len__(self):
-        return self.max_length
+        return self.length
 
     def __getitem__(self,idx):
         """找到数据idx对应的数据集"""
@@ -343,10 +367,10 @@ class LmdbDataset(Dataset):
         """读数据"""
         with self.currentenv.begin() as txn:
             datum=pickle.loads(txn.get('sample_{}'.format(dbidx).encode("ascii")))
-            tag=pickle.loads(txn.get('tag_{}'.format(dbidx).encode("ascii")))
-            tag_full=pickle.loads(txn.get('tag_full_{}'.format(dbidx).encode("ascii")))
-            tag_ground=pickle.loads(txn.get('tag_ground_{}'.format(dbidx).encode("ascii")))
-            sourcefile=pickle.loads(txn.get('source_{}'.format(dbidx).encode("ascii")))
+            tag=self.all_tags[idx]
+            tag_full=self.all_full_tags[idx]
+            tag_ground=self.ground_tags[idx]
+            sourcefile=self.source_files[idx]
             sample_length=pickle.loads(txn.get('sample_length_{}'.format(dbidx).encode("ascii")))
 
             if not self.padded:
@@ -379,6 +403,18 @@ class LmdbDataset(Dataset):
     def idxbounds(self):
         return self.index_bounds
 
+    @property
+    def tags(self):
+        #所有标签
+        return self.all_tags
+
+    @property
+    def groundtags(self):
+        return self.ground_tags
+
+    @property
+    def sourcefiles(self):
+        return self.source_files
 
 def packCIRData(directory_name,outputfile="cirdata.npz",lmdbname="",initlabels=[],for_aug=False,randomshift_n=1):
     """ 读所有cir csv文件打包到一个npz里面"""
@@ -547,7 +583,8 @@ if __name__ == '__main__':
     #dataset3=LmdbDataset(["../lmdb/jxydorm","../lmdb/jjzword"])
     dataset3=LmdbDataset("../lmdb/jxyaug1")
     print(len(dataset3))
-    print(dataset3[1000])
+    print(dataset3[34])
+    print(dataset3.label_list)
     #print(dataset2[40][0].shape)
     #set1,set2=int_split(dataset,2,partial=0.2)
     #print(len(set1))

@@ -41,11 +41,12 @@ if torch.cuda.is_available() and not params.cuda:
 In this block
     Get train and val data_loader
 """
-#all_dataset = dataset.diskDataset("../GSM_generation/training_data/Word")
-all_dataset = dataset.Dataset("augcir_moving2.npz")
+#all_dataset = dataset.Dataset("augcir_moving2.npz")
+all_dataset = dataset.LmdbDataset("../lmdb/jxyaug1")
 label_list=all_dataset.label_full_list
 test_dataset = ""
-test_dataset = dataset.Dataset("jxydorm_dataset.npz",max_length=all_dataset.datashape[2],initlabels=label_list)
+#test_dataset = dataset.Dataset("jxydorm_dataset.npz",max_length=all_dataset.datashape[2],initlabels=label_list)
+test_dataset = dataset.LmdbDataset("../lmdb/jxydorm",initlabels=label_list)
 if (test_dataset!=""):
     label_list=test_dataset.label_full_list
 print(label_list)
