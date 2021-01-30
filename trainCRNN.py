@@ -42,11 +42,11 @@ In this block
     Get train and val data_loader
 """
 #all_dataset = dataset.Dataset("augcir_moving2.npz")
-all_dataset = dataset.LmdbDataset("../lmdb/jxyaug1")
+all_dataset = dataset.LmdbDataset(["../lmdb/jxyword","../lmdb/jxyaug3"])
 label_list=all_dataset.label_full_list
 test_dataset = ""
 #test_dataset = dataset.Dataset("jxydorm_dataset.npz",max_length=all_dataset.datashape[2],initlabels=label_list)
-test_dataset = dataset.LmdbDataset("../lmdb/jxydorm",initlabels=label_list)
+test_dataset = dataset.LmdbDataset("../lmdb/jxynew",initlabels=label_list)
 if (test_dataset!=""):
     label_list=test_dataset.label_full_list
 print(label_list)
@@ -70,6 +70,9 @@ def data_loader(all_dataset):
 train_loader, val_loader = data_loader(all_dataset)
 test_loader=torch.utils.data.DataLoader(test_dataset,batch_size=batch_size, shuffle=True)
 nclass = len(label_list)
+
+print("train loader in all:",len(train_loader))
+print("val loader in all:",len(val_loader))
 # -----------------------------------------------
 """
 In this block
@@ -237,7 +240,10 @@ def val(net, criterion,data_loader):
                 char_correct+=len(target)
                 edit_correct+=len(target)
             else:
-                editdistance=utils.levenshteinDistance(pred,target)
+                if used_tag==0:
+                    editdistance=utils.levenshteinDistance(pred,target)
+                elif used_tag==1:
+                    editdistance=utils.levenshteinDistance(pred[1:],target[1:])
                 if (editdistance<len(target)):
                     edit_correct+=len(target)-editdistance
                 matching_blocks = SequenceMatcher(None, pred, target).get_matching_blocks()
@@ -253,7 +259,7 @@ def val(net, criterion,data_loader):
     sim_accuracy = char_correct / char_count
     edit_accuracy = edit_correct / char_count
     print('Val loss: %f, accuracy: %f, match acc: %f, edit acc: %f' % (loss_avg.val(), accuracy,sim_accuracy,edit_accuracy))
-    return accuracy, sim_accuracy
+    return accuracy, sim_accuracy, edit_accuracy
 
 def train(net, criterion, optimizer, train_iter):
     for p in net.parameters():
@@ -278,11 +284,28 @@ def train(net, criterion, optimizer, train_iter):
     return cost
 
 
+def updateacc(best_acc,best_epoch,acc,epoch):
+    if acc>best_acc:
+        best_acc=acc
+        best_epoch=epoch
+    return best_acc,best_epoch
+
 if __name__ == "__main__":
+    """记录最好结果"""
     best_accuracy=0
     best_sim_accuracy=0
+    best_edit_accuracy=0
+    best_accuracy_test=0
+    best_sim_accuracy_test=0
+    best_edit_accuracy_test=0
+
     best_epoch=0
     best_epoch_sim=0
+    best_epoch_edit=0
+    best_epoch_test=0
+    best_epoch_sim_test=0
+    best_epoch_edit_test=0
+
     for epoch in range(params.nepoch):
         train_iter = iter(train_loader)
         i = 0
@@ -302,28 +325,26 @@ if __name__ == "__main__":
                       (epoch, params.nepoch, i, len(train_loader), loss_avg.val()))
                 loss_avg.reset()
 
+            minvalepoch=0
             if params.pretrained == '':
-                if epoch>=5 and epoch%params.valEpochInterval==0 and i % valInterval == 0:
-                    accuracy,sim_accuracy=val(crnn, criterion,val_loader)
-                    val(crnn, criterion,test_loader)
-                    if accuracy>best_accuracy:
-                        best_accuracy=accuracy
-                        best_epoch=epoch
-                    if sim_accuracy>best_sim_accuracy:
-                        best_sim_accuracy=sim_accuracy
-                        best_epoch_sim=epoch
-            else :
-                if epoch%params.valEpochInterval==0 and i % valInterval == 0:
-                    accuracy,sim_accuracy=val(crnn, criterion,val_loader)
-                    if accuracy>best_accuracy:
-                        best_accuracy=accuracy
-                        best_epoch=epoch
-                    if sim_accuracy>best_sim_accuracy:
-                        best_sim_accuracy=sim_accuracy
-                        best_epoch_sim=epoch
+                minvalepoch=5
+            if epoch>=minvalepoch and epoch%params.valEpochInterval==0 and i % valInterval == 0:
+                """验证集"""
+                accuracy,sim_accuracy,edit_accuracy=val(crnn, criterion,val_loader)
+                best_accuracy,best_epoch=updateacc(best_accuracy,best_epoch,accuracy,epoch)
+                best_sim_accuracy,best_epoch_sim=updateacc(best_sim_accuracy,best_epoch_sim,sim_accuracy,epoch)
+                best_edit_accuracy,best_epoch_edit=updateacc(best_edit_accuracy,best_epoch_edit,edit_accuracy,epoch)
+                print("best val acc:{} at epoch:{},simCCR:{} at epoch:{},editCCR:{} at epoch:{}".format(best_accuracy,best_epoch,best_sim_accuracy,best_epoch_sim,best_edit_accuracy,best_epoch_edit))
+
+                """测试集"""
+                accuracy_test,sim_accuracy_test,edit_accuracy_test=val(crnn, criterion,test_loader)
+                best_accuracy_test,best_epoch_test=updateacc(best_accuracy_test,best_epoch_test,accuracy_test,epoch)
+                best_sim_accuracy_test,best_epoch_sim_test=updateacc(best_sim_accuracy_test,best_epoch_sim_test,sim_accuracy_test,epoch)
+                best_edit_accuracy_test,best_epoch_edit_test=updateacc(best_edit_accuracy_test,best_epoch_edit_test,edit_accuracy_test,epoch)
+                print("best test acc:{} at epoch:{},simCCR:{} at epoch:{},editCCR:{} at epoch:{}".format(best_accuracy_test,best_epoch_test,best_sim_accuracy_test,best_epoch_sim_test,best_edit_accuracy_test,best_epoch_edit_test))
+
             # do checkpointing
         if epoch % params.saveInterval == 0 or epoch==params.nepoch-1:
             torch.save(crnn.state_dict(), '{0}/netCRNN_{1}_.pth'.format(params.expr_dir, epoch))
-    print("best accuracy:{},at epoch:{}".format(best_accuracy,best_epoch))
-    print("best sim accuracy:{},at epoch:{}".format(best_sim_accuracy,best_epoch_sim))
+
     np.save('crnn_accuracy_2',[best_epoch,best_accuracy,best_epoch_sim,best_sim_accuracy])

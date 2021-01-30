@@ -6,7 +6,7 @@ import random
 import itertools
 import numpy as np
 import multiprocessing
-from torch.utils.data import Dataset,sampler,Subset
+from torch.utils.data import Dataset,Sampler,Subset
 import torchvision.transforms as transforms
 from utility import csvfilelist,padding
 import utility
@@ -14,6 +14,10 @@ from typing import List
 import lmdb as lmdb
 import pickle
 
+
+"""---------------------------------------------------------------------
+针对单个原始数据的预处理
+"""
 def normalize01(a):
     b =a-np.min(a)
     b/=np.max(b)
@@ -59,6 +63,9 @@ def preprocess_cir(filepath):
     return sample,tag_pure,tag_full
 
 
+"""------------------------------------------------------------------------------
+dataset的各个实现
+"""
 class diskDataset(Dataset):
     """读取一个文件夹内所有的csv文件"""
     def __init__(self,directory_name,transform=None,initlabels=[],max_length=-1):
@@ -302,6 +309,8 @@ class LmdbDataset(Dataset):
         self.all_tags=torch.tensor(label_mapping(self.tag_data,self.labels))
         self.all_full_tags=torch.tensor(label_mapping(self.tag_full_data,self.labels_full))
 
+        print(self.datashape)
+
     """工具函数"""
     def getdbparams(self):
         with self.currentenv.begin() as txn:
@@ -315,7 +324,7 @@ class LmdbDataset(Dataset):
             currentdbsize=int(str(txn.get("sample_number".encode("ascii")),encoding='utf8'))
             currentdatawidth=int(str(txn.get("max_length".encode("ascii")),encoding='utf8'))
             if currentdatawidth>self.max_width:
-                self.max_length=currentdatawidth
+                self.max_width=currentdatawidth
             self.length+=currentdbsize
             self.db_sizes.append(currentdbsize)
             self.index_bounds.append(self.length)
@@ -337,8 +346,7 @@ class LmdbDataset(Dataset):
         if self.currentenv is not None:
             self.currentenv.close()
         #开启下一个数据库
-        map_size =1024*1024*1024*50 # 50G=50*1024**3
-        env=lmdb.open(dbname,map_size=map_size, readonly=True)
+        env=lmdb.open(dbname, readonly=True) #读的时候readonly一定是True，不然会重新分配空间
         self.currentenv=env
         self.currentdb=dbname
 
@@ -399,9 +407,7 @@ class LmdbDataset(Dataset):
     def datashape(self):
         return (self.length,self.nchannels,self.max_width,self.nheight)
 
-    @property
-    def idxbounds(self):
-        return self.index_bounds
+
 
     @property
     def tags(self):
@@ -416,7 +422,19 @@ class LmdbDataset(Dataset):
     def sourcefiles(self):
         return self.source_files
 
-def packCIRData(directory_name,outputfile="cirdata.npz",lmdbname="",initlabels=[],for_aug=False,randomshift_n=1):
+    @property
+    def dblist(self):
+        return self.lmdbs
+
+    @property
+    def idxbounds(self):
+        return self.index_bounds
+
+    @property
+    def dbsizes(self):
+        return self.db_sizes
+
+def packCIRData(directory_name,outputfile="cirdata.npz",lmdbname="",initlabels=[],for_aug=False,randomshift_n=0,GB=0):
     """ 读所有cir csv文件打包到一个npz里面"""
     print("packing data from:"+directory_name+" into:"+outputfile)
     samples=[]
@@ -426,7 +444,21 @@ def packCIRData(directory_name,outputfile="cirdata.npz",lmdbname="",initlabels=[
     sourcefiles=[]
     data_lengths=[]
     labels=initlabels #标签种类
-    max=0.0
+    dataset_size=0
+    #初始化数据库
+    if lmdbname!="":
+        #基准1G
+        map_size =1024*1024*1024
+        if GB==0:
+            #默认5G
+            map_size*=5
+        else:
+            map_size=int(map_size*GB)
+        #根据增强次数分配多倍空间
+        map_size*=(randomshift_n+int(not for_aug))
+        dbname='../lmdb/'+lmdbname
+        env=lmdb.open(dbname,map_size=map_size)
+
     """遍历文件读数据"""
     filepaths=csvfilelist(directory_name)
     #pool = multiprocessing.Pool(processes=5)
@@ -446,20 +478,45 @@ def packCIRData(directory_name,outputfile="cirdata.npz",lmdbname="",initlabels=[
         if tag not in labels:
             labels.append(tag)
     padded_samples = padding(samples,-1)
-    all_tag_data=tag_data
-    all_tag_full_data=tag_full_data
-    all_tag_ground=tag_ground
-    all_sourcefiles=sourcefiles
-    all_data_lengths=data_lengths
+    """写数据库可以分段写，防止内存的数组过大"""
+    if lmdbname!="" and not for_aug:
+        print("start writing data to lmdb "+dbname)
+        with env.begin(write=True) as txn:
+            #先写原始sample数据
+            for i in range(len(samples)):
+                txn.put("sample_{}".format(i).encode("ascii"),pickle.dumps(padded_samples[i]))
+        dataset_size+=len(samples)
+    """for_aug表示不存原始数据只存增强数据"""
+    if not for_aug:
+        all_tag_data=tag_data
+        all_tag_full_data=tag_full_data
+        all_tag_ground=tag_ground
+        all_sourcefiles=sourcefiles
+        all_data_lengths=data_lengths
+    else:
+        all_tag_data=[]
+        all_tag_full_data=[]
+        all_tag_ground=[]
+        all_sourcefiles=[]
+        all_data_lengths=[]
     """数据增强：随机填充空白(左右移动)"""
     if (randomshift_n!=0):
         for i in range(randomshift_n):
             print("random padding {}".format(i))
             random_padded_samples= padding(samples,-1,padding_position=2)
-            if for_aug and i==0:
+            if lmdbname!="":
+                print("start writing data to lmdb "+dbname)
+                with env.begin(write=True) as txn:
+                    for i in range(len(random_padded_samples)):
+                        txn.put("sample_{}".format(dataset_size+i).encode("ascii"),pickle.dumps(random_padded_samples[i]))
+                dataset_size+=len(random_padded_samples)
                 padded_samples=random_padded_samples
             else:
-                padded_samples=np.concatenate((padded_samples,random_padded_samples),axis=0)
+                """一般方法把所有数据拼在一起，放在内存"""
+                if for_aug and i==0:
+                    padded_samples=random_padded_samples
+                else:
+                    padded_samples=np.concatenate((padded_samples,random_padded_samples),axis=0)
             all_tag_data=all_tag_data+tag_data
             all_tag_full_data=all_tag_full_data+tag_full_data
             all_tag_ground=all_tag_ground+[False]*len(tag_ground)
@@ -470,25 +527,29 @@ def packCIRData(directory_name,outputfile="cirdata.npz",lmdbname="",initlabels=[
     if (lmdbname==""):
         np.savez(outputfile,samples=all_samples,tags=all_tag_data,tag_full=all_tag_full_data,labels=labels,sources=all_sourcefiles,tag_ground=all_tag_ground,sample_lengths=all_data_lengths)
     else:
-        map_size =1024*1024*1024*50
-        dbname='../lmdb/'+lmdbname
-        env=lmdb.open(dbname,map_size=map_size)
-        print("start writing to lmdb "+dbname)
         with env.begin(write=True) as txn:
-            #写所有数据
-            for i in range(len(all_samples)):
-                txn.put("sample_{}".format(i).encode("ascii"),pickle.dumps(all_samples[i]))
+            #写除sample外所有数据
+            for i in range(dataset_size):
                 txn.put("tag_{}".format(i).encode("ascii"),pickle.dumps(all_tag_data[i]))
                 txn.put("tag_full_{}".format(i).encode("ascii"),pickle.dumps(all_tag_full_data[i]))
                 txn.put("source_{}".format(i).encode("ascii"),pickle.dumps(all_sourcefiles[i]))
                 txn.put("tag_ground_{}".format(i).encode("ascii"),pickle.dumps(all_tag_ground[i]))
                 txn.put("sample_length_{}".format(i).encode("ascii"),pickle.dumps(all_data_lengths[i]))
             #写meta数据
-            txn.put("sample_number".encode("ascii"),'{}'.format(len(all_samples)).encode("ascii"))
+            txn.put("sample_number".encode("ascii"),'{}'.format(dataset_size).encode("ascii"))
             txn.put("labels".encode("ascii"),pickle.dumps(labels))
             txn.put("max_length".encode("ascii"),'{}'.format(all_samples.shape[2]).encode("ascii"))
         env.close()
 
+def data_augmentation(sample):
+    """
+    数据增强，输入一个sample，做处理后输出一个list(sample)
+    """
+    return 0
+
+"""-------------------------------------------------------------------------------
+对dataset和dataloader使用的各种工具函数，分割，sampler以及batchsampler
+"""
 def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
     """
     从每个标签对应的数据中分割固定int个,或者按照partial 0.x 分割部分
@@ -541,12 +602,45 @@ def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
         train_indices.append(tag_indice)
     return [Subset(dataset,list(itertools.chain.from_iterable(train_indices))), Subset(dataset,list(itertools.chain.from_iterable(val_indices)))]
 
-def data_augmentation(sample):
+class DBRandomSampler(Sampler):
+    r"""多lmdb风格的随机sampler，根据不同db分别进行shuffle
+    Arguments:
+        data_source (Dataset): lmdbdataset必须有数据库的名称表dblist 和每个对应的数据索引输idxbounds
+        replacement (bool): 现在没有用的参数。samples are drawn with replacement if ``True``, default=``False``
+        num_samples (int): 返回总数据集长度。number of samples to draw, default=`len(dataset)`. This argument
+            is supposed to be specified only when `replacement` is ``True``.
     """
-    数据增强，输入一个sample，做处理后输出一个list(sample)
-    """
-    return 0
+    def __init__(self, data_source, replacement=False, num_samples=None):
+        self.data_source = data_source
+        if not (hasattr(self.data_source,"dblist") and hasattr(self.data_source,"idxbounds")):
+            print("illegal database for sampler,please use a lmdb dataset")
+            return
+        # 这个参数控制的应该为是否重复采样
+        self.replacement = replacement
+        self._num_samples = num_samples
+    # 省略类型检查
+    @property
+    def num_samples(self):
+        # dataset size might change at runtime
+        # 初始化时不传入num_samples的时候使用数据源的长度
+        if self._num_samples is None:
+            return len(self.data_source)
+        return self._num_samples
+    # 返回数据集长度
+    def __len__(self):
+        return self.num_samples
 
+    def __iter__(self):
+        n = len(self.data_source)
+        dbn = len(self.data_source.dblist)
+        for
+
+
+        return iter(torch.randperm(n).tolist())
+
+"""------------------------------------------------------------------
+工具小函数
+"""
 def label_mapping(tags,label_list)-> List[int]:
     """
     重写的其它类型映射到label，返回数字数组
@@ -558,8 +652,9 @@ def label_mapping(tags,label_list)-> List[int]:
     return tags
 
 def lmdbtest():
-    map_size =1024**3
-    env=lmdb.open('../lmdb/jxyaug1',map_size=map_size)
+    #map_size =1024**3
+    env=lmdb.open('../lmdb/jjzword2',readonly=True)
+    print(env.stat())
     a=np.asarray([[1,2,3,4],[5,6,7,8]])
     #with env.begin(write=True) as txn:
     #    value=a
@@ -572,20 +667,21 @@ def lmdbtest():
     return
 
 
+"""测试以及快速调用区域"""
 if __name__ == '__main__':
     #dataset=diskDataset("../GSM_generation/training_data/Word_jxydorm")
-    #packCIRData("../GSM_generation/training_data/Word",lmdbname="jxyword",randomshift_n=0,for_aug=False)
+    #packCIRData("../GSM_generation/training_data/Word",lmdbname="jxyaug3",randomshift_n=3,for_aug=True,GB=6.5)
     #packCIRData("../GSM_generation/training_data/Word","jxy_dcirset.npz",randomshift_n=0)
-    #packCIRData("../GSM_generation/training_data/Word_jjz",lmdbname="jjzword",randomshift_n=0)
+    packCIRData("../GSM_generation/training_data/Word_jxynew",lmdbname="jxynew",randomshift_n=0,for_aug=False,GB=0.75)
     #packCIRData("../GSM_generation/training_data/Word_jxydorm","jxydorm_dataset.npz",randomshift_n=0)
     #dataset=Dataset("jxy_dataset.npz")
     #dataset2=Dataset("jxynew_dataset.npz",padded=False)
-    #dataset3=LmdbDataset(["../lmdb/jxydorm","../lmdb/jjzword"])
-    dataset3=LmdbDataset("../lmdb/jxyaug1")
-    print(len(dataset3))
-    print(dataset3[34])
-    print(dataset3.label_list)
-    #print(dataset2[40][0].shape)
+    #dataset3=LmdbDataset(["../lmdb/jjzword","../lmdb/jjzaug1","../lmdb/jjzaug2"])
+    #dataset3=LmdbDataset("../lmdb/jxyaug1")
+    #print(dataset3.label_list)
+    #print(dataset3.tags)
+    #print(dataset3.ground_tags)
+    #print(dataset3[40][0][0][000:400])
     #set1,set2=int_split(dataset,2,partial=0.2)
     #print(len(set1))
     #lmdbtest()
