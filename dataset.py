@@ -728,6 +728,14 @@ class DBBatchSampler(Sampler):
                     self.currentdbsize=self.idxbounds[self.currentdb]
                 else:
                     self.currentdbsize=self.idxbounds[self.currentdb]-self.idxbounds[self.currentdb-1]
+                """数据增强集或者太小的db不会包括到验证集，导致当前dbsize为0，跳到下一个"""
+                while self.currentdbsize==0 and dbcounter<len(dborder):
+                    dbcounter+=1
+                    self.currentdb=dborder[dbcounter]
+                    if self.currentdb==0:
+                        self.currentdbsize=self.idxbounds[self.currentdb]
+                    else:
+                        self.currentdbsize=self.idxbounds[self.currentdb]-self.idxbounds[self.currentdb-1]
                 self.currentiter=0
             batch.append(idx)
             # 如果采样个数和batch_size相等则本次采样完成
@@ -777,6 +785,17 @@ def lmdbtest():
     return
 
 
+def finddb(idx,idxbounds):
+    for i in range(len(idxbounds)):
+        if (idx<idxbounds[i]):
+            if i==0:
+                size=idxbounds[i]
+            else:
+                size=idxbounds[i]-idxbounds[i-1]
+            return i,size
+
+
+
 """测试以及快速调用区域"""
 if __name__ == '__main__':
     #dataset=diskDataset("../GSM_generation/training_data/Word_jxydorm")
@@ -789,18 +808,37 @@ if __name__ == '__main__':
     #packCIRData("../GSM_generation/training_data/Word_zq",lmdbname="zqaug3",randomshift_n=3,for_aug=True,GB=2.2)
     #dataset=Dataset("jxy_dataset.npz")
     #dataset2=Dataset("jxynew_dataset.npz",padded=False)
+    dblist=[]
+    for user in ["jxy","zq","jjz"]:
+        dblist.append("../lmdb/"+user+"word")
+        dblist.append("../lmdb/"+user+"aug1")
+
+    print(dblist)
     #dataset3=LmdbDataset(["../lmdb/jjzword","../lmdb/jxynew","../lmdb/jxydorm"])
-    #dataset3=LmdbDataset("../lmdb/jxyaug1")
+    dataset3=LmdbDataset(dblist)
     #print(dataset3.label_list)
     #print(dataset3.tags)
     #print(dataset3.ground_tags)
     #print(dataset3[40][0][0][000:400])
-    #idxbounds=dataset3.idxbounds
-    #set1,set2,train_indices=int_split(dataset3,2,partial=0.2)
+    idxbounds=dataset3.idxbounds
+    print(idxbounds)
+    set1,set2,train_indices,val_indices=int_split(dataset3,2,partial=0.2)
     #sampler=DBRandomSampler(set1,idxbounds,train_indices)
     #batchsampler=DBBatchSampler(sampler,7)
-    #for x in batchsampler:
-    #    print(x)
+    valsampler=DBBatchSampler(DBRandomSampler(set2,idxbounds,val_indices),7)
+    """for x in batchsampler:
+        dbidx,size0=finddb(x[0],idxbounds)
+        for i in x:
+            dbidx_t,size=finddb(i,idxbounds)
+            if (dbidx_t!=dbidx):
+                print(x)"""
+    print("---------------------")
+    for x in valsampler:
+        dbidx,size0=finddb(x[0],idxbounds)
+        for i in x:
+            dbidx_t,size=finddb(i,idxbounds)
+            if (dbidx_t!=dbidx):
+                print(x)
     #print(len(set1))
     #lmdbtest()
     a=1
