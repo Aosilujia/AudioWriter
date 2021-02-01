@@ -15,7 +15,7 @@ dealwith_lossnan = False # whether to replace all nan/inf in gradients to zero
 init_weight = False
 
 # hardware
-gpu_id="3"
+gpu_id="0"
 cuda = True # enables cuda
 multi_gpu = False # whether to use multi gpu
 device_ids = [0]
@@ -32,7 +32,7 @@ n_val_disp = 10 # number of samples to display when val the model
 
 # finetune
 nepoch = 500 # number of epochs to train for
-batchSize = 50 # input batch size
+batchSize = 25 # input batch size
 lr = 0.0001 # learning rate for Critic, not used by adadealta 0.0001
 beta1 = 0.5 # beta1 for adam. default=0.5
 adam = True # whether to use adam (default is rmsprop)

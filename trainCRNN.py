@@ -50,18 +50,20 @@ test_dataset = dataset.LmdbDataset("../lmdb/jxynew",initlabels=label_list)
 if (test_dataset!=""):
     label_list=test_dataset.label_full_list
 print(label_list)
-used_tag=params.tag_choice
+idxbounds=all_dataset.idxbounds
 
+used_tag=params.tag_choice
 batch_size=params.batchSize
 
 def data_loader(all_dataset):
     assert all_dataset
     train_length=int(len(all_dataset)*0.8)
-    train_dataset,val_dataset=dataset.int_split(all_dataset,5,0.2)
+    train_dataset,val_dataset,train_indices=dataset.int_split(all_dataset,5,0.2)
     #train_dataset,val_dataset=random_split(all_dataset,[train_length,len(all_dataset)-train_length])
+    print("train_dataset length=",len(train_dataset))
+    train_loader = torch.utils.data.DataLoader(all_dataset,\
+        batch_sampler=dataset.DBBatchSampler(dataset.DBRandomSampler(train_dataset,idxbounds,train_indices),batch_size))
 
-    train_loader = torch.utils.data.DataLoader(train_dataset,batch_size=batch_size, \
-            shuffle=True)
     # val
     val_loader = torch.utils.data.DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
 
@@ -70,6 +72,7 @@ def data_loader(all_dataset):
 train_loader, val_loader = data_loader(all_dataset)
 test_loader=torch.utils.data.DataLoader(test_dataset,batch_size=batch_size, shuffle=True)
 nclass = len(label_list)
+
 
 print("train loader in all:",len(train_loader))
 print("val loader in all:",len(val_loader))

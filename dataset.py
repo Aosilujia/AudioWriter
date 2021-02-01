@@ -550,7 +550,7 @@ def data_augmentation(sample):
 """-------------------------------------------------------------------------------
 对dataset和dataloader使用的各种工具函数，分割，sampler以及batchsampler
 """
-def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
+def int_split(dataset: Dataset, length: int, partial=1):
     """
     从每个标签对应的数据中分割固定int个,或者按照partial 0.x 分割部分
     Arguments:
@@ -600,7 +600,8 @@ def int_split(dataset: Dataset, length: int, partial=1) -> List[Subset]:
                 if sources[index]==sources[value]: #同一个文件增强出的数据
                     tag_indice.remove(index)
         train_indices.append(tag_indice)
-    return [Subset(dataset,list(itertools.chain.from_iterable(train_indices))), Subset(dataset,list(itertools.chain.from_iterable(val_indices)))]
+    return [Subset(dataset,list(itertools.chain.from_iterable(train_indices))), Subset(dataset,list(itertools.chain.from_iterable(val_indices))),list(itertools.chain.from_iterable(train_indices))]
+
 
 class DBRandomSampler(Sampler):
     r"""多lmdb风格的随机sampler，根据不同db分别进行shuffle
@@ -610,14 +611,37 @@ class DBRandomSampler(Sampler):
         num_samples (int): 返回总数据集长度。number of samples to draw, default=`len(dataset)`. This argument
             is supposed to be specified only when `replacement` is ``True``.
     """
-    def __init__(self, data_source, replacement=False, num_samples=None):
+    def __init__(self, data_source,idxbounds=[],indices=[], replacement=False, num_samples=None):
         self.data_source = data_source
-        if not (hasattr(self.data_source,"dblist") and hasattr(self.data_source,"idxbounds")):
-            print("illegal database for sampler,please use a lmdb dataset")
-            return
         # 这个参数控制的应该为是否重复采样
         self.replacement = replacement
         self._num_samples = num_samples
+        self.idxbounds = idxbounds
+        self.indices = indices
+        self.indexes = []
+        self.trueidxbounds = []
+        self.dborder=[]
+        """把所有下标根据idxbound分到数据库对应的数组中"""
+        for i in range(len(idxbounds)):
+            self.indexes.append([])
+        for idx in self.indices:
+            dbidx,size=self.finddb(idx)
+            self.indexes[dbidx].append(idx)
+        for i in range(len(idxbounds)):
+            if self.trueidxbounds==[]:
+                self.trueidxbounds.append(len(self.indexes[i]))
+            else:
+                self.trueidxbounds.append(self.trueidxbounds[i-1]+len(self.indexes[i]))
+
+    def finddb(self,idx):
+        for i in range(len(self.idxbounds)):
+            if (idx<self.idxbounds[i]):
+                if i==0:
+                    size=self.idxbounds[i]
+                else:
+                    size=self.idxbounds[i]-self.idxbounds[i-1]
+                return i,size
+
     # 省略类型检查
     @property
     def num_samples(self):
@@ -631,12 +655,97 @@ class DBRandomSampler(Sampler):
         return self.num_samples
 
     def __iter__(self):
-        n = len(self.data_source)
-        dbn = len(self.data_source.dblist)
-        for
+        """原始版本是打乱所有数据。db版本在各个数据集内打乱数据，然后再打乱各个数据集的顺序。
+            因为每个数据集的cir宽度不同，所以为了输入到网络需要分别处理(靠batchsampler)。
+        """
+        idxbounds= self.idxbounds
+        result_indexs=[]
+        """随机数据库顺序"""
+        dborder=torch.randperm(len(idxbounds))
+        self.dborder=dborder
+        for dbidx in dborder:
+            """子数据集随机下标"""
+            indexlist=self.indexes[dbidx]
+            np.random.shuffle(indexlist)
+            randomidxs=indexlist
+            result_indexs+=randomidxs
+        return iter(result_indexs)
 
+    @property
+    def idx_bounds(self):
+        return self.trueidxbounds
 
-        return iter(torch.randperm(n).tolist())
+    @property
+    def db_order(self):
+        return self.dborder
+
+"""lmdb风格批采样，必须根据数据库把不同长度的数据装到不同batch"""
+class DBBatchSampler(Sampler):
+    r"""Wraps another sampler to yield a mini-batch of indices."""
+    def __init__(self ,sampler, batch_size, drop_last=False):
+        # ...省略类型检查
+        # 定义使用何种采样器Sampler
+        self.sampler = sampler
+        self.batch_size = batch_size
+        # 是否在采样个数小于batch_size时剔除本次采样
+        self.drop_last = drop_last
+
+        #数据库相关
+        if not (hasattr(sampler,"db_order") and hasattr(sampler,"idx_bounds")):
+            print("illegal sampler for batch sampler,please use a lmdb sampler")
+            return
+        self.idxbounds=sampler.idx_bounds
+        self.currentdb=-1 #表示目前batch所存db
+        self.length=0 #batch数量记录器
+        #iter全局变量
+        self.currentdbsize=0
+        self.currentiter=0 # current db counter
+
+        idxbounds=self.idxbounds
+        for dbidx in range(len(idxbounds)):
+            #遍历计算每个db会装几个batch
+            if dbidx==0:
+                dbsize=idxbounds[0]
+            else:
+                dbsize=idxbounds[dbidx]-idxbounds[dbidx-1]
+            if self.drop_last:
+                self.length+=dbsize // self.batch_size
+            else:
+                self.length+=(dbsize + self.batch_size - 1) // self.batch_size
+
+    def __iter__(self):
+        batch = []
+        dbcounter = 0
+        counter = 0
+        for idx in self.sampler:
+            counter+=1
+            dborder=self.sampler.db_order
+            if self.currentdb==-1:
+                """切换到对应的数据库"""
+                self.currentdb=dborder[dbcounter]
+                if self.currentdb==0:
+                    self.currentdbsize=self.idxbounds[self.currentdb]
+                else:
+                    self.currentdbsize=self.idxbounds[self.currentdb]-self.idxbounds[self.currentdb-1]
+                self.currentiter=0
+            batch.append(idx)
+            # 如果采样个数和batch_size相等则本次采样完成
+            if len(batch) == self.batch_size:
+                yield batch
+                batch = []
+            self.currentiter+=1
+            if self.currentiter>=self.currentdbsize:
+                """当前数据库的数据已全部装载到batch中，准备切换下一个数据库"""
+                self.currentdb=-1
+                dbcounter+=1
+                # 在不需要剔除不足batch_size的采样个数时返回当前batch
+                if len(batch) > 0 and not self.drop_last:
+                    yield batch
+                    batch=[]
+
+    def __len__(self):
+        # 在不进行剔除时，数据的长度就是采样器索引的长度
+        return self.length
 
 """------------------------------------------------------------------
 工具小函数
@@ -672,16 +781,25 @@ if __name__ == '__main__':
     #dataset=diskDataset("../GSM_generation/training_data/Word_jxydorm")
     #packCIRData("../GSM_generation/training_data/Word",lmdbname="jxyaug3",randomshift_n=3,for_aug=True,GB=6.5)
     #packCIRData("../GSM_generation/training_data/Word","jxy_dcirset.npz",randomshift_n=0)
-    packCIRData("../GSM_generation/training_data/Word_jxynew",lmdbname="jxynew",randomshift_n=0,for_aug=False,GB=0.75)
-    #packCIRData("../GSM_generation/training_data/Word_jxydorm","jxydorm_dataset.npz",randomshift_n=0)
+    #packCIRData("../GSM_generation/training_data/Word_jxynew",lmdbname="jxynew",randomshift_n=0,for_aug=False,GB=0.75)
+    #packCIRData("../GSM_generation/training_data/Word_zq",lmdbname="zqword",randomshift_n=0,for_aug=False,GB=2.2)
+    #packCIRData("../GSM_generation/training_data/Word_zq",lmdbname="zqaug1",randomshift_n=1,for_aug=True,GB=2.2)
+    #packCIRData("../GSM_generation/training_data/Word_zq",lmdbname="zqaug2",randomshift_n=2,for_aug=True,GB=2.2)
+    #packCIRData("../GSM_generation/training_data/Word_zq",lmdbname="zqaug3",randomshift_n=3,for_aug=True,GB=2.2)
     #dataset=Dataset("jxy_dataset.npz")
     #dataset2=Dataset("jxynew_dataset.npz",padded=False)
-    #dataset3=LmdbDataset(["../lmdb/jjzword","../lmdb/jjzaug1","../lmdb/jjzaug2"])
+    #dataset3=LmdbDataset(["../lmdb/jjzword","../lmdb/jxynew","../lmdb/jxydorm"])
     #dataset3=LmdbDataset("../lmdb/jxyaug1")
     #print(dataset3.label_list)
     #print(dataset3.tags)
     #print(dataset3.ground_tags)
     #print(dataset3[40][0][0][000:400])
-    #set1,set2=int_split(dataset,2,partial=0.2)
+    #idxbounds=dataset3.idxbounds
+    #set1,set2,train_indices=int_split(dataset3,2,partial=0.2)
+    #sampler=DBRandomSampler(set1,idxbounds,train_indices)
+    #batchsampler=DBBatchSampler(sampler,7)
+    #for x in batchsampler:
+    #    print(x)
     #print(len(set1))
     #lmdbtest()
+    a=1
