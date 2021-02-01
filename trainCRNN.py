@@ -58,15 +58,15 @@ batch_size=params.batchSize
 def data_loader(all_dataset):
     assert all_dataset
     train_length=int(len(all_dataset)*0.8)
-    train_dataset,val_dataset,train_indices=dataset.int_split(all_dataset,5,0.2)
+    train_dataset,val_dataset,train_indices,val_indices=dataset.int_split(all_dataset,5,0.2)
     #train_dataset,val_dataset=random_split(all_dataset,[train_length,len(all_dataset)-train_length])
     print("train_dataset length=",len(train_dataset))
     train_loader = torch.utils.data.DataLoader(all_dataset,\
         batch_sampler=dataset.DBBatchSampler(dataset.DBRandomSampler(train_dataset,idxbounds,train_indices),batch_size))
-
     # val
-    val_loader = torch.utils.data.DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
-
+    #val_loader = torch.utils.data.DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(all_dataset,\
+        batch_sampler=dataset.DBBatchSampler(dataset.DBRandomSampler(val_dataset,idxbounds,val_indices),batch_size))
     return train_loader, val_loader
 
 train_loader, val_loader = data_loader(all_dataset)

@@ -600,7 +600,8 @@ def int_split(dataset: Dataset, length: int, partial=1):
                 if sources[index]==sources[value]: #同一个文件增强出的数据
                     tag_indice.remove(index)
         train_indices.append(tag_indice)
-    return [Subset(dataset,list(itertools.chain.from_iterable(train_indices))), Subset(dataset,list(itertools.chain.from_iterable(val_indices))),list(itertools.chain.from_iterable(train_indices))]
+    return [Subset(dataset,list(itertools.chain.from_iterable(train_indices))), Subset(dataset,list(itertools.chain.from_iterable(val_indices))),
+            list(itertools.chain.from_iterable(train_indices)),list(itertools.chain.from_iterable(val_indices))]
 
 
 class DBRandomSampler(Sampler):
