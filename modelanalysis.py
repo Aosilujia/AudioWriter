@@ -1,10 +1,16 @@
+import torch
 import utility
 import numpy as np
 
-conf_matrix=np.load('confusion_matrix.npy',allow_pickle = True)
+a=torch.Tensor([ [[1,2],[3,4]] ,
+            [[5,6],[7,8]] ])
+print(a.view((4,2,1)))
+
+
+conf_matrix=np.load('cfs\confusion_matrix4.npy',allow_pickle = True)
 labels=np.load('labels.npy')
-results=np.load('crnn_accuracy.npy')
-print(results)
+#results=np.load('crnn_accuracy.npy')
+#print(results)
 
 classes=labels #np.zeros(40)
 #utility.plot_error_matrix(conf_matrix.T, classes, normalize=False)
