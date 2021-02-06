@@ -2,6 +2,7 @@ import os
 import queue
 import string
 import torch
+import scipy.ndimage
 import random
 import itertools
 import numpy as np
@@ -13,6 +14,7 @@ import utility
 from typing import List
 import lmdb as lmdb
 import pickle
+import matplotlib.pyplot as plt
 
 
 """---------------------------------------------------------------------
@@ -24,6 +26,9 @@ def normalize01(a):
     return b
 
 def preprocess_cir(filepath):
+    """
+    预处理cir，决定输入网络的是哪几个维度作为channel
+    """
     cir_data=np.genfromtxt(filepath, dtype=complex, delimiter=',')
     """数据预处理"""
     #上下限切割
@@ -257,14 +262,14 @@ class LmdbDataset(Dataset):
             return
         elif isinstance(lmdbs,str):
             #单个lmdb数据库的判断及部分初始化
-            if not os.path.exists(lmdbs):
+            if not os.path.isdir(lmdbs):
                 print(lmdbs+" is not an existing file")
                 return
             initdb=lmdbs
         else:
             #lmdb数据库列表的判断及部分初始化
             for db in lmdbs:
-                if not os.path.exists(db):
+                if not os.path.isdir(db):
                     print(db+" is not an existing file")
                     return
             initdb=lmdbs[0]
@@ -434,6 +439,7 @@ class LmdbDataset(Dataset):
     def dbsizes(self):
         return self.db_sizes
 
+## WARNING: lmdbset绝对应该声明为class，虽然数据和meta分开可能有点难度
 def packCIRData(directory_name,outputfile="cirdata.npz",lmdbname="",initlabels=[],for_aug=False,randomshift_n=0,GB=0):
     """ 读所有cir csv文件打包到一个npz里面"""
     print("packing data from:"+directory_name+" into:"+outputfile)
@@ -541,11 +547,6 @@ def packCIRData(directory_name,outputfile="cirdata.npz",lmdbname="",initlabels=[
             txn.put("max_length".encode("ascii"),'{}'.format(all_samples.shape[2]).encode("ascii"))
         env.close()
 
-def data_augmentation(sample):
-    """
-    数据增强，输入一个sample，做处理后输出一个list(sample)
-    """
-    return 0
 
 """-------------------------------------------------------------------------------
 对dataset和dataloader使用的各种工具函数，分割，sampler以及batchsampler
@@ -769,7 +770,141 @@ def label_mapping(tags,label_list)-> List[int]:
     tags=list(map(label_dict.get,tags))
     return tags
 
+def finddb(idx,idxbounds):
+    """给定数据下标以及各个数据库的数据下标范围，找到数据在数据库中的真实下标，以及数据库size"""
+    for i in range(len(idxbounds)):
+        if (idx<idxbounds[i]):
+            if i==0:
+                size=idxbounds[i]
+            else:
+                size=idxbounds[i]-idxbounds[i-1]
+            return i,size
+
+def scale_cir(sample,length=-1,scale=1):
+    """
+    放缩cir数据，输入一个原始cir sample，输出放缩过的数据
+    """
+    if length!=-1:
+        data=sample[:length]
+    else:
+        data=sample
+
+    #实虚部分别 双线性插值
+    scaled_real=scipy.ndimage.zoom(data.real, (scale,1), order=1)
+    scaled_imag=scipy.ndimage.zoom(data.imag, (scale,1), order=1)
+    scaled_data=scaled_real+1j*scaled_imag
+
+    return scaled_data
+
+## WARNING: 巨tm硬编码，得改成和preprocess_cir内一样
+def npcirpreprocess(cir_data):
+    real_sample =cir_data.real
+    imag_sample =cir_data.imag
+    amp_sample = np.abs(cir_data)
+    ang_sample = np.angle(cir_data)
+    try:
+        diff_sample=np.concatenate((np.asarray([np.zeros(121)]),np.diff(cir_data,axis=0)),axis=0)
+    except(ValueError):
+        print(cir_data)
+        diff_sample=np.concatenate((np.asarray([np.zeros(121)]),np.diff(cir_data,axis=0)),axis=0)
+    amp_diff_sample=np.abs(diff_sample)
+
+    diff_ang_sample = np.diff(ang_sample,n=1,axis=0)
+    diff_amp_sample = np.diff(amp_sample,n=1,axis=0)
+    sample = np.stack((real_sample, imag_sample,amp_diff_sample), axis=0)
+    return sample
+
+def augLmdb(dbname,outputdbname="augtemp",GB=1,ratio=0.1,scale_times=1,randomshift_n=0):
+    """
+    读取Lmdb数据库，选取部分数据进行数据增强，存到一个新的db里面
+    dbname: lmdb数据库名，现在只支持纯净原始数据集，不支持增强过的
+    ratio: 随机选择的样本比例，进行增强
+    randomshift_n: 进行几次padding生成复制样本
+    """
+    if not os.path.isdir(dbname):
+        print(dbname+" is not existing")
+        return
+    env=lmdb.open(dbname,readonly=True)
+    samples=[]
+    tag_data=[]
+    tag_full_data=[]
+    tag_ground_data=[]
+    sourcefile_data=[]
+    labels=[]
+    dataset_size=0
+    with env.begin() as txn:
+        labels=pickle.loads(txn.get('labels'.encode('ascii')))
+        dbsize=int(str(txn.get("sample_number".encode("ascii")),encoding='utf8'))
+        dbwidth=int(str(txn.get("max_length".encode("ascii")),encoding='utf8'))
+        indices=[]
+        for i in range(dbsize):
+            indices.append(i)
+        if ratio>1:
+            ratio=1
+        aug_length=int(dbsize*ratio)
+        aug_indices=random.sample(indices,aug_length)
+
+        for idx in aug_indices:
+            #依次读标签数据
+            tag=pickle.loads(txn.get('tag_{}'.format(idx).encode("ascii")))
+            tag_full=pickle.loads(txn.get('tag_full_{}'.format(idx).encode("ascii")))
+            sample_length=pickle.loads(txn.get("sample_length_{}".format(idx).encode("ascii")))
+            sourcefile=pickle.loads(txn.get('source_{}'.format(idx).encode("ascii")))
+            #原始数据
+            datum=pickle.loads(txn.get('sample_{}'.format(dbidx).encode("ascii")))
+            #warning:硬编码：包好的datum一般是将real和imag分开
+            complexdatum=datum[0]+datum[1]*1j
+            ## WARNING:硬编码放缩上下限
+            for i in range(scale_times):
+                #压缩
+                scale_ratio=random.uniform(0.5,1)
+                small_datum=scale_cir(complexdatum,length=sample_length,scale=scale_ratio)
+                samples.append(npcirpreprocess(small_datum))
+                #伸长
+                scale_ratio=random.uniform(1,2)
+                large_datum=scale_cir(complexdatum,length=sample_length,scale=scale_ratio)
+                samples.append(npcirpreprocess(large_datum))
+                for j in range(2):
+                    tag_data.append(tag)
+                    tag_full_data.append(tag_full_data)
+                    tag_ground_data.append(False)
+                    sourcefile_data.append(sourcefile)
+            #如果有其他增强在这下面继续
+    #对齐
+    padded_samples = padding(samples,-1,padding_position=2)
+    dataset_size+=len(samples)
+    """开始写新数据库"""
+    map_size =1024*1024*1024
+    if GB==0:
+        #默认1G
+        map_size*=1
+    else:
+        map_size=int(map_size*GB)
+    #根据增强次数分配多倍空间
+    map_size*=(randomshift_n+int(not for_aug))
+    dbname='../lmdb/'+outputdbname
+    env2=lmdb.open(dbname,map_size=map_size)
+    with env2.begin(write=True) as txn:
+        #先写原始sample数据
+        for i in range(len(samples)):
+            txn.put("sample_{}".format(i).encode("ascii"),pickle.dumps(padded_samples[i]))
+            #写除sample外所有数据
+            for i in range(dataset_size):
+                txn.put("tag_{}".format(i).encode("ascii"),pickle.dumps(tag_data[i]))
+                txn.put("tag_full_{}".format(i).encode("ascii"),pickle.dumps(tag_full_data[i]))
+                txn.put("source_{}".format(i).encode("ascii"),pickle.dumps(sourcefile_data[i]))
+                txn.put("tag_ground_{}".format(i).encode("ascii"),pickle.dumps(tag_ground_data[i]))
+            #写meta数据
+            txn.put("sample_number".encode("ascii"),'{}'.format(dataset_size).encode("ascii"))
+            txn.put("labels".encode("ascii"),pickle.dumps(labels))
+            txn.put("max_length".encode("ascii"),'{}'.format(padded_samples.shape[2]).encode("ascii"))
+
+    #先不实现再次左右了，干脆多存几次
+
+
+"""测试以及快速调用区域"""
 def lmdbtest():
+    """"""
     #map_size =1024**3
     env=lmdb.open('../lmdb/jjzword2',readonly=True)
     print(env.stat())
@@ -784,28 +919,15 @@ def lmdbtest():
     print(pickle.loads(file))
     return
 
-
-def finddb(idx,idxbounds):
-    for i in range(len(idxbounds)):
-        if (idx<idxbounds[i]):
-            if i==0:
-                size=idxbounds[i]
-            else:
-                size=idxbounds[i]-idxbounds[i-1]
-            return i,size
-
-
-
-"""测试以及快速调用区域"""
 if __name__ == '__main__':
     #dataset=diskDataset("../GSM_generation/training_data/Word_jxydorm")
     #packCIRData("../GSM_generation/training_data/Word",lmdbname="jxyaug3",randomshift_n=3,for_aug=True,GB=6.5)
     #packCIRData("../GSM_generation/training_data/Word","jxy_dcirset.npz",randomshift_n=0)
     #packCIRData("../GSM_generation/training_data/Word_jxynew",lmdbname="jxynew",randomshift_n=0,for_aug=False,GB=0.75)
-    #packCIRData("../GSM_generation/training_data/Word_zq",lmdbname="zqword",randomshift_n=0,for_aug=False,GB=2.2)
-    #packCIRData("../GSM_generation/training_data/Word_zq",lmdbname="zqaug1",randomshift_n=1,for_aug=True,GB=2.2)
-    #packCIRData("../GSM_generation/training_data/Word_zq",lmdbname="zqaug2",randomshift_n=2,for_aug=True,GB=2.2)
-    #packCIRData("../GSM_generation/training_data/Word_zq",lmdbname="zqaug3",randomshift_n=3,for_aug=True,GB=2.2)
+    #packCIRData("../GSM_generation/training_data/Word_cd",lmdbname="cdword",randomshift_n=0,for_aug=False,GB=2.2)
+    #packCIRData("../GSM_generation/training_data/Word_cd",lmdbname="cdaug1",randomshift_n=1,for_aug=True,GB=2.2)
+    #packCIRData("../GSM_generation/training_data/Word_cd",lmdbname="cdaug2",randomshift_n=2,for_aug=True,GB=2.2)
+    #packCIRData("../GSM_generation/training_data/Word_cd",lmdbname="cdaug3",randomshift_n=3,for_aug=True,GB=2.2)
     #dataset=Dataset("jxy_dataset.npz")
     #dataset2=Dataset("jxynew_dataset.npz",padded=False)
     dblist=[]
@@ -820,25 +942,27 @@ if __name__ == '__main__':
     #print(dataset3.tags)
     #print(dataset3.ground_tags)
     #print(dataset3[40][0][0][000:400])
-    idxbounds=dataset3.idxbounds
-    print(idxbounds)
-    set1,set2,train_indices,val_indices=int_split(dataset3,2,partial=0.2)
+    #idxbounds=dataset3.idxbounds
+    #print(idxbounds)
+    #set1,set2,train_indices,val_indices=int_split(dataset3,2,partial=0.2)
     #sampler=DBRandomSampler(set1,idxbounds,train_indices)
     #batchsampler=DBBatchSampler(sampler,7)
-    valsampler=DBBatchSampler(DBRandomSampler(set2,idxbounds,val_indices),7)
+    #valsampler=DBBatchSampler(DBRandomSampler(set2,idxbounds,val_indices),7)
     """for x in batchsampler:
         dbidx,size0=finddb(x[0],idxbounds)
         for i in x:
             dbidx_t,size=finddb(i,idxbounds)
             if (dbidx_t!=dbidx):
                 print(x)"""
-    print("---------------------")
+    """print("---------------------")
     for x in valsampler:
         dbidx,size0=finddb(x[0],idxbounds)
         for i in x:
             dbidx_t,size=finddb(i,idxbounds)
             if (dbidx_t!=dbidx):
-                print(x)
+                print(x)"""
     #print(len(set1))
+    cir_data=np.genfromtxt("../GSM_generation/training_data/Word/about/jxy/=about_2.csv", dtype=complex, delimiter=',')
+    scale_cir(cir_data,scale=2)
     #lmdbtest()
     a=1
