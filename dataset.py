@@ -384,7 +384,7 @@ class LmdbDataset(Dataset):
             tag_full=self.all_full_tags[idx]
             tag_ground=self.ground_tags[idx]
             sourcefile=self.source_files[idx]
-            sample_length=pickle.loads(txn.get('sample_length_{}'.format(dbidx).encode("ascii")))
+            #sample_length=pickle.loads(txn.get('sample_length_{}'.format(dbidx).encode("ascii")))
 
             if not self.padded:
                 datum=datum[:,:sample_length]
@@ -851,7 +851,7 @@ def augLmdb(dbname,outputdbname="augtemp",GB=1,ratio=0.1,scale_times=1,randomshi
             sample_length=pickle.loads(txn.get("sample_length_{}".format(idx).encode("ascii")))
             sourcefile=pickle.loads(txn.get('source_{}'.format(idx).encode("ascii")))
             #原始数据
-            datum=pickle.loads(txn.get('sample_{}'.format(dbidx).encode("ascii")))
+            datum=pickle.loads(txn.get('sample_{}'.format(idx).encode("ascii")))
             #warning:硬编码：包好的datum一般是将real和imag分开
             complexdatum=datum[0]+datum[1]*1j
             ## WARNING:硬编码放缩上下限
@@ -861,12 +861,12 @@ def augLmdb(dbname,outputdbname="augtemp",GB=1,ratio=0.1,scale_times=1,randomshi
                 small_datum=scale_cir(complexdatum,length=sample_length,scale=scale_ratio)
                 samples.append(npcirpreprocess(small_datum))
                 #伸长
-                scale_ratio=random.uniform(1,2)
+                scale_ratio=random.uniform(1,1.5)
                 large_datum=scale_cir(complexdatum,length=sample_length,scale=scale_ratio)
                 samples.append(npcirpreprocess(large_datum))
                 for j in range(2):
                     tag_data.append(tag)
-                    tag_full_data.append(tag_full_data)
+                    tag_full_data.append(tag_full)
                     tag_ground_data.append(False)
                     sourcefile_data.append(sourcefile)
             #如果有其他增强在这下面继续
@@ -881,7 +881,7 @@ def augLmdb(dbname,outputdbname="augtemp",GB=1,ratio=0.1,scale_times=1,randomshi
     else:
         map_size=int(map_size*GB)
     #根据增强次数分配多倍空间
-    map_size*=(randomshift_n+int(not for_aug))
+    map_size*=(randomshift_n+1)
     dbname='../lmdb/'+outputdbname
     env2=lmdb.open(dbname,map_size=map_size)
     with env2.begin(write=True) as txn:
@@ -906,7 +906,7 @@ def augLmdb(dbname,outputdbname="augtemp",GB=1,ratio=0.1,scale_times=1,randomshi
 def lmdbtest():
     """"""
     #map_size =1024**3
-    env=lmdb.open('../lmdb/jjzword2',readonly=True)
+    env=lmdb.open('../lmdb/augtest',readonly=True)
     print(env.stat())
     a=np.asarray([[1,2,3,4],[5,6,7,8]])
     #with env.begin(write=True) as txn:
@@ -914,9 +914,11 @@ def lmdbtest():
     #    txn.put("test1".encode("ascii"),pickle.dumps(value))
         #txn.commit()
     txn=env.begin()
-    file=txn.get('sample_6000'.encode("ascii"))
+    file=txn.get('sample_4'.encode("ascii"))
     #print(file)
     print(pickle.loads(file))
+    plt.pcolormesh(pickle.loads(file)[0].T)
+    plt.show()
     return
 
 if __name__ == '__main__':
@@ -924,10 +926,10 @@ if __name__ == '__main__':
     #packCIRData("../GSM_generation/training_data/Word",lmdbname="jxyaug3",randomshift_n=3,for_aug=True,GB=6.5)
     #packCIRData("../GSM_generation/training_data/Word","jxy_dcirset.npz",randomshift_n=0)
     #packCIRData("../GSM_generation/training_data/Word_jxynew",lmdbname="jxynew",randomshift_n=0,for_aug=False,GB=0.75)
-    #packCIRData("../GSM_generation/training_data/Word_cd",lmdbname="cdword",randomshift_n=0,for_aug=False,GB=2.2)
-    #packCIRData("../GSM_generation/training_data/Word_cd",lmdbname="cdaug1",randomshift_n=1,for_aug=True,GB=2.2)
-    #packCIRData("../GSM_generation/training_data/Word_cd",lmdbname="cdaug2",randomshift_n=2,for_aug=True,GB=2.2)
-    #packCIRData("../GSM_generation/training_data/Word_cd",lmdbname="cdaug3",randomshift_n=3,for_aug=True,GB=2.2)
+    #packCIRData("../GSM_generation/training_data/Word_jxymeeting",lmdbname="jxymeeting",randomshift_n=0,for_aug=False,GB=0.7)
+    #packCIRData("../GSM_generation/training_data/Word_sjj",lmdbname="sjjaug1",randomshift_n=1,for_aug=True,GB=1.0)
+    #packCIRData("../GSM_generation/training_data/Word_sjj",lmdbname="sjjaug2",randomshift_n=2,for_aug=True,GB=1.0)
+    #packCIRData("../GSM_generation/training_data/Word_sjj",lmdbname="sjjaug3",randomshift_n=3,for_aug=True,GB=1.0)
     #dataset=Dataset("jxy_dataset.npz")
     #dataset2=Dataset("jxynew_dataset.npz",padded=False)
     dblist=[]
@@ -962,7 +964,14 @@ if __name__ == '__main__':
             if (dbidx_t!=dbidx):
                 print(x)"""
     #print(len(set1))
-    cir_data=np.genfromtxt("../GSM_generation/training_data/Word/about/jxy/=about_2.csv", dtype=complex, delimiter=',')
-    scale_cir(cir_data,scale=2)
+    #cir_data=np.genfromtxt("../GSM_generation/training_data/Word/about/jxy/=about_2.csv", dtype=complex, delimiter=',')
+    #scale_cir(cir_data,scale=2)
+    augLmdb("../lmdb/jjzword",outputdbname="jjzscale",GB=0.3,ratio=0.1,scale_times=2,randomshift_n=0)
+    augLmdb("../lmdb/jxyword",outputdbname="jxyscale",GB=4.0,ratio=0.1,scale_times=2,randomshift_n=0)
+    augLmdb("../lmdb/zqword",outputdbname="zqscale",GB=1.5,ratio=0.1,scale_times=2,randomshift_n=0)
+    augLmdb("../lmdb/zrword",outputdbname="zrscale",GB=1.5,ratio=0.1,scale_times=2,randomshift_n=0)
+    augLmdb("../lmdb/cdword",outputdbname="cdscale",GB=2.0,ratio=0.1,scale_times=2,randomshift_n=0)
+    augLmdb("../lmdb/szyword",outputdbname="szyscale",GB=0.7,ratio=0.1,scale_times=2,randomshift_n=0)
+    augLmdb("../lmdb/sjjword",outputdbname="sjjscale",GB=0.7,ratio=0.1,scale_times=2,randomshift_n=0)
     #lmdbtest()
     a=1

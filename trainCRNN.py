@@ -12,6 +12,7 @@ import os
 import utility as utils
 import dataset
 from difflib import SequenceMatcher
+import itertools
 
 import models.CRNN as net
 import params
@@ -42,14 +43,23 @@ In this block
     Get train and val data_loader
 """
 #all_dataset = dataset.Dataset("augcir_moving2.npz")
-all_dataset = dataset.LmdbDataset(["../lmdb/jxyword","../lmdb/jxyaug3"])
+dblist=[]
+for user in ["jxy","zq","jjz"]:
+    dblist.append("../lmdb/"+user+"word")
+    dblist.append("../lmdb/"+user+"aug1")
+    dblist.append("../lmdb/"+user+"aug2")
+    dblist.append("../lmdb/"+user+"aug3")
+
+print(dblist)
+
+all_dataset = dataset.LmdbDataset(["../lmdb/jxyaug1","../lmdb/zraug1","../lmdb/zrscale","../lmdb/zqaug1","../lmdb/zqscale","../lmdb/cdaug1","../lmdb/jjzaug1","../lmdb/szyword"])#["../lmdb/jxyword","../lmdb/jxyaug2"])
 label_list=all_dataset.label_full_list
 test_dataset = ""
 #test_dataset = dataset.Dataset("jxydorm_dataset.npz",max_length=all_dataset.datashape[2],initlabels=label_list)
-test_dataset = dataset.LmdbDataset("../lmdb/jxynew",initlabels=label_list)
+#test_dataset = dataset.LmdbDataset("../lmdb/jxynew",initlabels=label_list)
 if (test_dataset!=""):
     label_list=test_dataset.label_full_list
-print(label_list)
+
 idxbounds=all_dataset.idxbounds
 
 used_tag=params.tag_choice
@@ -69,10 +79,28 @@ def data_loader(all_dataset):
         batch_sampler=dataset.DBBatchSampler(dataset.DBRandomSampler(val_dataset,idxbounds,val_indices),batch_size))
     return train_loader, val_loader
 
-train_loader, val_loader = data_loader(all_dataset)
-test_loader=torch.utils.data.DataLoader(test_dataset,batch_size=batch_size, shuffle=True)
-nclass = len(label_list)
+def full_data_loader(all_dataset):
+    assert all_dataset
+    train_indices=[]
+    for i in range(len(all_dataset)):
+        train_indices.append(i)
+    train_loader = torch.utils.data.DataLoader(all_dataset,\
+        batch_sampler=dataset.DBBatchSampler(dataset.DBRandomSampler(all_dataset,idxbounds,train_indices),batch_size))
+    return train_loader
 
+#train_loader, val_loader = data_loader(all_dataset)
+train_loader=full_data_loader(all_dataset)
+val_dataset=dataset.LmdbDataset("../lmdb/sjjword",initlabels=label_list)
+#val_loader=torch.utils.data.DataLoader(val_dataset,batch_size=batch_size, shuffle=True)
+val_loader,train_loader2=data_loader(val_dataset)
+
+if (test_dataset!=""):
+    test_loader=torch.utils.data.DataLoader(test_dataset,batch_size=batch_size, shuffle=True)
+
+label_list=val_dataset.label_full_list
+nclass = len(label_list)
+print(label_list)
+len(label_list)
 
 print("train loader in all:",len(train_loader))
 print("val loader in all:",len(val_loader))
@@ -340,11 +368,12 @@ if __name__ == "__main__":
                 print("best val acc:{} at epoch:{},simCCR:{} at epoch:{},editCCR:{} at epoch:{}".format(best_accuracy,best_epoch,best_sim_accuracy,best_epoch_sim,best_edit_accuracy,best_epoch_edit))
 
                 """测试集"""
-                accuracy_test,sim_accuracy_test,edit_accuracy_test=val(crnn, criterion,test_loader)
-                best_accuracy_test,best_epoch_test=updateacc(best_accuracy_test,best_epoch_test,accuracy_test,epoch)
-                best_sim_accuracy_test,best_epoch_sim_test=updateacc(best_sim_accuracy_test,best_epoch_sim_test,sim_accuracy_test,epoch)
-                best_edit_accuracy_test,best_epoch_edit_test=updateacc(best_edit_accuracy_test,best_epoch_edit_test,edit_accuracy_test,epoch)
-                print("best test acc:{} at epoch:{},simCCR:{} at epoch:{},editCCR:{} at epoch:{}".format(best_accuracy_test,best_epoch_test,best_sim_accuracy_test,best_epoch_sim_test,best_edit_accuracy_test,best_epoch_edit_test))
+                if (test_dataset!=""):
+                    accuracy_test,sim_accuracy_test,edit_accuracy_test=val(crnn, criterion,test_loader)
+                    best_accuracy_test,best_epoch_test=updateacc(best_accuracy_test,best_epoch_test,accuracy_test,epoch)
+                    best_sim_accuracy_test,best_epoch_sim_test=updateacc(best_sim_accuracy_test,best_epoch_sim_test,sim_accuracy_test,epoch)
+                    best_edit_accuracy_test,best_epoch_edit_test=updateacc(best_edit_accuracy_test,best_epoch_edit_test,edit_accuracy_test,epoch)
+                    print("best test acc:{} at epoch:{},simCCR:{} at epoch:{},editCCR:{} at epoch:{}".format(best_accuracy_test,best_epoch_test,best_sim_accuracy_test,best_epoch_sim_test,best_edit_accuracy_test,best_epoch_edit_test))
 
             # do checkpointing
         if epoch % params.saveInterval == 0 or epoch==params.nepoch-1:
