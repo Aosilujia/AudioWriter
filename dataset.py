@@ -681,6 +681,10 @@ class DBRandomSampler(Sampler):
     def db_order(self):
         return self.dborder
 
+    @property
+    def original_idx_bounds(self):
+        return self.idxbounds
+
 """lmdb风格批采样，必须根据数据库把不同长度的数据装到不同batch"""
 class DBBatchSampler(Sampler):
     r"""Wraps another sampler to yield a mini-batch of indices."""
@@ -697,6 +701,7 @@ class DBBatchSampler(Sampler):
             print("illegal sampler for batch sampler,please use a lmdb sampler")
             return
         self.idxbounds=sampler.idx_bounds
+        self.oriidxbound=sampler.original_idx_bounds
         self.currentdb=-1 #表示目前batch所存db
         self.length=0 #batch数量记录器
         #iter全局变量
@@ -721,37 +726,24 @@ class DBBatchSampler(Sampler):
         counter = 0
         for idx in self.sampler:
             counter+=1
+
             dborder=self.sampler.db_order
+            idxdb=finddb(idx,self.oriidxbound)
             if self.currentdb==-1:
-                """切换到对应的数据库"""
-                self.currentdb=dborder[dbcounter]
-                if self.currentdb==0:
-                    self.currentdbsize=self.idxbounds[self.currentdb]
-                else:
-                    self.currentdbsize=self.idxbounds[self.currentdb]-self.idxbounds[self.currentdb-1]
-                """数据增强集或者太小的db不会包括到验证集，导致当前dbsize为0，跳到下一个"""
-                while self.currentdbsize==0 and dbcounter<len(dborder):
-                    dbcounter+=1
-                    self.currentdb=dborder[dbcounter]
-                    if self.currentdb==0:
-                        self.currentdbsize=self.idxbounds[self.currentdb]
-                    else:
-                        self.currentdbsize=self.idxbounds[self.currentdb]-self.idxbounds[self.currentdb-1]
-                self.currentiter=0
+                self.currentdb=idxdb
+            if self.currentdb!=idxdb:
+                self.currentdb=idxdb
+                if len(batch) > 0:
+                    yield batch
+                    batch=[]
             batch.append(idx)
             # 如果采样个数和batch_size相等则本次采样完成
             if len(batch) == self.batch_size:
                 yield batch
                 batch = []
-            self.currentiter+=1
-            if self.currentiter>=self.currentdbsize:
-                """当前数据库的数据已全部装载到batch中，准备切换下一个数据库"""
-                self.currentdb=-1
-                dbcounter+=1
-                # 在不需要剔除不足batch_size的采样个数时返回当前batch
-                if len(batch) > 0 and not self.drop_last:
-                    yield batch
-                    batch=[]
+
+        if len(batch) > 0 and not self.drop_last:
+            yield batch
 
     def __len__(self):
         # 在不进行剔除时，数据的长度就是采样器索引的长度
@@ -857,11 +849,11 @@ def augLmdb(dbname,outputdbname="augtemp",GB=1,ratio=0.1,scale_times=1,randomshi
             ## WARNING:硬编码放缩上下限
             for i in range(scale_times):
                 #压缩
-                scale_ratio=random.uniform(0.5,1)
+                scale_ratio=random.uniform(0.7,0.95)
                 small_datum=scale_cir(complexdatum,length=sample_length,scale=scale_ratio)
                 samples.append(npcirpreprocess(small_datum))
                 #伸长
-                scale_ratio=random.uniform(1,1.5)
+                scale_ratio=random.uniform(1.05,1.5)
                 large_datum=scale_cir(complexdatum,length=sample_length,scale=scale_ratio)
                 samples.append(npcirpreprocess(large_datum))
                 for j in range(2):
@@ -870,10 +862,8 @@ def augLmdb(dbname,outputdbname="augtemp",GB=1,ratio=0.1,scale_times=1,randomshi
                     tag_ground_data.append(False)
                     sourcefile_data.append(sourcefile)
             #如果有其他增强在这下面继续
-    #对齐
-    padded_samples = padding(samples,-1,padding_position=2)
-    dataset_size+=len(samples)
     """开始写新数据库"""
+    samples_size=len(samples)
     map_size =1024*1024*1024
     if GB==0:
         #默认1G
@@ -885,21 +875,27 @@ def augLmdb(dbname,outputdbname="augtemp",GB=1,ratio=0.1,scale_times=1,randomshi
     dbname='../lmdb/'+outputdbname
     env2=lmdb.open(dbname,map_size=map_size)
     with env2.begin(write=True) as txn:
-        #先写原始sample数据
-        for i in range(len(samples)):
-            txn.put("sample_{}".format(i).encode("ascii"),pickle.dumps(padded_samples[i]))
+        print("write to"+dbname+",samples:",len(samples)*(randomshift_n+1))
+        for x in range(randomshift_n+1):
+            dataset_size+=len(samples)
+            #对齐
+            padded_samples = padding(samples,-1,padding_position=2)
+            #先写原始sample数据
+            for i in range(len(samples)):
+                idx=i+len(samples)*x
+                txn.put("sample_{}".format(idx).encode("ascii"),pickle.dumps(padded_samples[i]))
+        for x in range(randomshift_n+1):
             #写除sample外所有数据
-            for i in range(dataset_size):
-                txn.put("tag_{}".format(i).encode("ascii"),pickle.dumps(tag_data[i]))
-                txn.put("tag_full_{}".format(i).encode("ascii"),pickle.dumps(tag_full_data[i]))
-                txn.put("source_{}".format(i).encode("ascii"),pickle.dumps(sourcefile_data[i]))
-                txn.put("tag_ground_{}".format(i).encode("ascii"),pickle.dumps(tag_ground_data[i]))
-            #写meta数据
-            txn.put("sample_number".encode("ascii"),'{}'.format(dataset_size).encode("ascii"))
-            txn.put("labels".encode("ascii"),pickle.dumps(labels))
-            txn.put("max_length".encode("ascii"),'{}'.format(padded_samples.shape[2]).encode("ascii"))
-
-    #先不实现再次左右了，干脆多存几次
+            for i in range(samples_size):
+                idx=i+samples_size*(x)
+                txn.put("tag_{}".format(idx).encode("ascii"),pickle.dumps(tag_data[i]))
+                txn.put("tag_full_{}".format(idx).encode("ascii"),pickle.dumps(tag_full_data[i]))
+                txn.put("source_{}".format(idx).encode("ascii"),pickle.dumps(sourcefile_data[i]))
+                txn.put("tag_ground_{}".format(idx).encode("ascii"),pickle.dumps(tag_ground_data[i]))
+        #写meta数据
+        txn.put("sample_number".encode("ascii"),'{}'.format(dataset_size).encode("ascii"))
+        txn.put("labels".encode("ascii"),pickle.dumps(labels))
+        txn.put("max_length".encode("ascii"),'{}'.format(padded_samples.shape[2]).encode("ascii"))
 
 
 """测试以及快速调用区域"""
@@ -966,12 +962,12 @@ if __name__ == '__main__':
     #print(len(set1))
     #cir_data=np.genfromtxt("../GSM_generation/training_data/Word/about/jxy/=about_2.csv", dtype=complex, delimiter=',')
     #scale_cir(cir_data,scale=2)
-    augLmdb("../lmdb/jjzword",outputdbname="jjzscale",GB=0.3,ratio=0.1,scale_times=2,randomshift_n=0)
-    augLmdb("../lmdb/jxyword",outputdbname="jxyscale",GB=4.0,ratio=0.1,scale_times=2,randomshift_n=0)
-    augLmdb("../lmdb/zqword",outputdbname="zqscale",GB=1.5,ratio=0.1,scale_times=2,randomshift_n=0)
-    augLmdb("../lmdb/zrword",outputdbname="zrscale",GB=1.5,ratio=0.1,scale_times=2,randomshift_n=0)
-    augLmdb("../lmdb/cdword",outputdbname="cdscale",GB=2.0,ratio=0.1,scale_times=2,randomshift_n=0)
-    augLmdb("../lmdb/szyword",outputdbname="szyscale",GB=0.7,ratio=0.1,scale_times=2,randomshift_n=0)
-    augLmdb("../lmdb/sjjword",outputdbname="sjjscale",GB=0.7,ratio=0.1,scale_times=2,randomshift_n=0)
+    augLmdb("../lmdb/jjzword",outputdbname="jjzscale0.8_2",GB=0.8,ratio=0.4,scale_times=1,randomshift_n=1)
+    augLmdb("../lmdb/jxyword",outputdbname="jxyscale0.8_2",GB=18.0,ratio=0.4,scale_times=1,randomshift_n=1)
+    augLmdb("../lmdb/zqword",outputdbname="zqscale0.8_2",GB=6.0,ratio=0.4,scale_times=1,randomshift_n=1)
+    #augLmdb("../lmdb/zrword",outputdbname="zrscale",GB=1.5,ratio=0.1,scale_times=1,randomshift_n=0)
+    #augLmdb("../lmdb/cdword",outputdbname="cdscale",GB=2.0,ratio=0.1,scale_times=1,randomshift_n=0)
+    #augLmdb("../lmdb/szyword",outputdbname="szyscale",GB=0.7,ratio=0.1,scale_times=1,randomshift_n=0)
+    #augLmdb("../lmdb/sjjword",outputdbname="sjjscale",GB=0.7,ratio=0.1,scale_times=1,randomshift_n=0)
     #lmdbtest()
     a=1
